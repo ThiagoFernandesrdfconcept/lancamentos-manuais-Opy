@@ -15,6 +15,7 @@
   --ink-soft:#3C4A5C;
   --bg:#F3F4F1;
   --panel:#FFFFFF;
+  --row-hover:#FAFBFA;
   --line:#DCDFE2;
   --line-soft:#EAECEE;
   --accent:#2F6F5E;
@@ -27,6 +28,46 @@
   --muted:#6B7480;
   --sidebar:#16212E;
   --sidebar-soft:#8FA0AF;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ink:#E7EAED;
+    --ink-soft:#AEB8C2;
+    --bg:#14181D;
+    --panel:#1B2027;
+    --row-hover:#20262E;
+    --line:#2A3039;
+    --line-soft:#232830;
+    --accent:#3E9C81;
+    --accent-dark:#7FD9BC;
+    --accent-soft:#1E362F;
+    --warn:#D69A5C;
+    --warn-soft:#3A2C1B;
+    --danger:#E08585;
+    --danger-soft:#3A2020;
+    --muted:#8B95A1;
+    --sidebar:#0F141A;
+    --sidebar-soft:#7C8A97;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#E7EAED;
+  --ink-soft:#AEB8C2;
+  --bg:#14181D;
+  --panel:#1B2027;
+  --row-hover:#20262E;
+  --line:#2A3039;
+  --line-soft:#232830;
+  --accent:#3E9C81;
+  --accent-dark:#7FD9BC;
+  --accent-soft:#1E362F;
+  --warn:#D69A5C;
+  --warn-soft:#3A2C1B;
+  --danger:#E08585;
+  --danger-soft:#3A2020;
+  --muted:#8B95A1;
+  --sidebar:#0F141A;
+  --sidebar-soft:#7C8A97;
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;height:100%;}
@@ -92,7 +133,7 @@ h1,h2,h3{
 
 .sidebar-footer{margin-top:auto;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1);}
 .sidebar-footer label{font-size:11px;color:var(--sidebar-soft);display:block;margin-bottom:5px;}
-.sidebar-footer input{
+.sidebar-footer input, .sidebar-footer select{
   width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);
   color:#fff;border-radius:5px;padding:7px 8px;font-size:12.5px;font-family:inherit;
 }
@@ -120,7 +161,7 @@ main{flex:1;padding:30px 40px;max-width:1180px;overflow-x:hidden;}
 .field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:5px;font-weight:500;}
 .field input[type=text],.field input[type=number],.field input[type=date],.field select,.field textarea{
   width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;
-  font-family:inherit;font-size:13.5px;background:#fff;color:var(--ink);
+  font-family:inherit;font-size:13.5px;background:var(--panel);color:var(--ink);
 }
 .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
 .field .hint{font-size:11px;color:var(--muted);margin-top:4px;}
@@ -132,7 +173,7 @@ main{flex:1;padding:30px 40px;max-width:1180px;overflow-x:hidden;}
 .account-selected.show{display:block;}
 .autocomplete-list{
   position:absolute;z-index:40;top:calc(100% + 3px);left:0;right:0;
-  background:#fff;border:1px solid var(--line);border-radius:6px;
+  background:var(--panel);border:1px solid var(--line);border-radius:6px;
   max-height:260px;overflow-y:auto;box-shadow:0 6px 18px rgba(20,30,40,0.12);display:none;
 }
 .autocomplete-list.show{display:block;}
@@ -163,7 +204,7 @@ thead th{
   white-space:nowrap;
 }
 tbody td{padding:9px 8px;border-bottom:1px solid var(--line-soft);vertical-align:top;}
-tbody tr:hover{background:#FAFBFA;}
+tbody tr:hover{background:var(--row-hover);}
 td.num,th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
 .tbl-scroll{overflow-x:auto;}
 
@@ -174,7 +215,7 @@ td.num,th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
 
 .lote-card{
   border:1px solid var(--line);border-radius:8px;padding:16px 18px;margin-bottom:12px;
-  cursor:pointer;background:#fff;transition:border-color .12s;
+  cursor:pointer;background:var(--panel);transition:border-color .12s;
 }
 .lote-card:hover{border-color:var(--accent);}
 .lote-card.active{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
@@ -232,7 +273,7 @@ td.num,th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
 .tipo-lanc{display:flex;gap:8px;margin-bottom:4px;}
 .tipo-chip{
   flex:1;text-align:center;padding:9px 8px;border:1px solid var(--line);border-radius:6px;
-  cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink-soft);background:#fff;transition:all .12s;
+  cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink-soft);background:var(--panel);transition:all .12s;
 }
 .tipo-chip:hover{border-color:var(--accent);}
 .tipo-chip.active{background:var(--accent);border-color:var(--accent);color:#fff;}
@@ -242,7 +283,7 @@ td.num,th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
 </head>
 <body>
 <div id="loginScreen" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--sidebar);">
-  <div style="background:#fff;border-radius:12px;padding:36px 34px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,.35);">
+  <div style="background:var(--panel);border-radius:12px;padding:36px 34px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,.35);">
     <div style="font-family:'Source Serif 4',serif;font-size:21px;font-weight:600;color:var(--ink);margin-bottom:2px;">Lançamentos</div>
     <div style="font-size:12.5px;color:var(--muted);margin-bottom:24px;">Contabilização manual · Sankhya</div>
     <div class="field" style="margin-bottom:12px;">
@@ -274,6 +315,12 @@ td.num,th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
       <input id="meuNomeInput" type="text" placeholder="Seu nome" readonly style="cursor:not-allowed;opacity:.85;">
       <label for="meuSetorInput" style="margin-top:10px;">Setor <span style="color:var(--danger)">*</span></label>
       <input id="meuSetorInput" type="text" placeholder="Ex: Contabilidade">
+      <label for="temaSelect" style="margin-top:10px;">Tema</label>
+      <select id="temaSelect">
+        <option value="auto">Automático</option>
+        <option value="light">Claro</option>
+        <option value="dark">Escuro</option>
+      </select>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.1);font-size:11px;color:var(--sidebar-soft);">
         <span id="loggedAsEmail"></span> · <a href="#" id="btnLogout" style="color:var(--sidebar-soft);text-decoration:underline;">sair</a>
       </div>
@@ -364,6 +411,7 @@ let state = {
   usingModeloId: null,
   meuNome: '',
   meuSetor: '',
+  tema: 'auto',
   editingId: null,
   revertendoId: null,
   selectedLoteView: {},
@@ -402,6 +450,11 @@ async function loadState(){
     const r = await window.storage.get('meu-setor', false);
     state.meuSetor = r ? r.value : '';
   }catch(e){ state.meuSetor = ''; }
+  try{
+    const r = await window.storage.get('meu-tema', false);
+    state.tema = r && r.value ? r.value : 'auto';
+  }catch(e){ state.tema = 'auto'; }
+  aplicarTema(state.tema);
   try{
     const r = await window.storage.get('ultima-empresa', false);
     if(r && EMPRESAS.includes(r.value)) state.empresa = r.value;
@@ -617,6 +670,18 @@ function applySyncToUI(isExternal){
 async function saveNome(v){
   state.meuNome = v;
   try{ await window.storage.set('meu-nome', v, false); }catch(e){}
+}
+function aplicarTema(tema){
+  if(tema === 'light' || tema === 'dark'){
+    document.documentElement.setAttribute('data-theme', tema);
+  }else{
+    document.documentElement.removeAttribute('data-theme');
+  }
+}
+async function saveTema(v){
+  state.tema = v;
+  aplicarTema(v);
+  try{ await window.storage.set('meu-tema', v, false); }catch(e){}
 }
 async function saveSetor(v){
   state.meuSetor = v;
@@ -1543,7 +1608,7 @@ function renderExportar(){
       <div class="divider"></div>
       <div class="field">
         <label>Próximo número sequencial (NUMLAN)</label>
-        <input id="f_numlanStart" type="number" min="1" value="${defaultStart}" ${counter ? 'readonly style="background:#F3F4F1;color:var(--muted);"' : ''}>
+        <input id="f_numlanStart" type="number" min="1" value="${defaultStart}" ${counter ? 'readonly style="background:var(--line-soft);color:var(--muted);"' : ''}>
         <div class="hint">${counter ? 'Definido automaticamente a partir do último arquivo gerado para este lote.' : 'Primeira exportação deste lote — confirme o número inicial combinado com o Sankhya (normalmente o próximo disponível).'}</div>
       </div>
       <div class="kv"><span>Liberados p/ exportar</span><b>${pendentes.length}</b></div>
@@ -1576,6 +1641,7 @@ function renderExportar(){
 function afterRender(){
   document.getElementById('meuNomeInput').value = state.meuNome;
   document.getElementById('meuSetorInput').value = state.meuSetor;
+  document.getElementById('temaSelect').value = state.tema;
 
   document.querySelectorAll('.company-tab').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -2212,6 +2278,7 @@ document.querySelectorAll('.navbtn').forEach(b => {
   b.addEventListener('click', () => setTab(b.dataset.tab));
 });
 document.getElementById('meuSetorInput').addEventListener('change', (e) => saveSetor(e.target.value));
+document.getElementById('temaSelect').addEventListener('change', (e) => saveTema(e.target.value));
 document.getElementById('meuSetorInput').addEventListener('input', (e) => {
   if(e.target.value.trim()) e.target.style.borderColor = '';
 });
