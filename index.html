@@ -1429,10 +1429,10 @@ function renderLotes(){
   </div>
   ${renderCompanyTabs()}
   <div class="grid" style="grid-template-columns:260px 1fr;gap:20px;align-items:start;">
-    <div id="loteCards" style="max-height:720px;overflow-y:auto;padding-right:4px;">${cards}</div>
-    <div class="panel">
+    <div id="loteCards" style="max-height:720px;overflow-y:auto;overflow-x:hidden;padding-right:4px;">${cards}</div>
+    <div class="panel" style="display:flex;flex-direction:column;max-height:720px;">
       <div class="panel-title">Lote ${escapeHtml(sel)}${nomeDoLote(sel) ? ' — '+escapeHtml(nomeDoLote(sel)) : ''} — conferência</div>
-      <div class="grid grid-3" style="margin-bottom:16px;">
+      <div class="grid grid-3" style="margin-bottom:16px;flex-shrink:0;">
         <div class="field">
           <label>Total lançado</label>
           <div class="mono" style="font-size:18px;font-weight:600;">R$ ${formatBRL(total)}</div>
@@ -1446,7 +1446,7 @@ function renderLotes(){
           <div id="conferenciaBadge"><span class="badge muted">informe o valor esperado</span></div>
         </div>
       </div>
-      <div class="grid grid-3" style="margin-bottom:14px;">
+      <div class="grid grid-3" style="margin-bottom:14px;flex-shrink:0;">
         <div class="field">
           <label>Filtrar por Natureza</label>
           <select id="f_filtroNat">
@@ -1466,7 +1466,7 @@ function renderLotes(){
           ${filtroAtivo ? `<div class="mono" style="font-size:15px;font-weight:600;">R$ ${formatBRL(totalFiltrado)} <span style="font-weight:400;font-family:'Inter';color:var(--muted);font-size:12px;">(${entriesFiltered.length} de ${entries.length})</span></div>` : ''}
         </div>
       </div>
-      <div class="tbl-scroll" style="max-height:720px;overflow-y:auto;">
+      <div class="tbl-scroll" style="flex:1;overflow:auto;min-height:0;">
         <table>
           <thead><tr><th>Data</th><th>Débito</th><th>Crédito</th><th>Doc</th><th class="num">Valor</th><th>Histórico</th><th>Centro de Resultado</th><th>Natureza</th><th>Status</th><th>Ações</th></tr></thead>
           <tbody>${rows}</tbody>
