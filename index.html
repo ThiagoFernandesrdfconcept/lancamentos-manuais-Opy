@@ -1038,6 +1038,7 @@ function renderLancar(){
           <input type="hidden" id="ac_debito_hidden">
           <div class="autocomplete-list" id="ac_debito_list"></div>
           <div class="account-selected" id="ac_debito_sel"></div>
+          <div class="small-note" style="color:var(--danger);display:none;margin-top:4px;" id="debitoAutoWarn"></div>
         </div>
         <div class="field field-account" id="wrap_credito">
           <label>Crédito</label>
@@ -1691,6 +1692,7 @@ function afterRender(){
       if(wrapDeb.classList.contains('locked')) acDebito.clear();
       if(wrapCred.classList.contains('locked')) acCredito.clear();
       { const cw = document.getElementById('creditoAutoWarn'); if(cw) cw.style.display = 'none'; }
+      { const dw = document.getElementById('debitoAutoWarn'); if(dw) dw.style.display = 'none'; }
 
       wrapDeb.classList.remove('locked');
       wrapCred.classList.remove('locked');
@@ -1738,28 +1740,31 @@ function afterRender(){
 
       if(!nat || tipoLanc === 'direto') return;
       if(tipoLanc === 'provisao'){
-        acDebito.setValue(nat.red);
-        wrapDeb.classList.add('locked');
-        debInput.readOnly = true;
-
-        // Todas as empresas exceto ONM: Crédito também trava automático (4.1→1990, 4.2→1092).
-        // ONM não entra aqui — ela usa o campo separado de "2ª fase" para essa mesma regra.
-        const creditoWarn = document.getElementById('creditoAutoWarn');
+        const debitoWarn = document.getElementById('debitoAutoWarn');
+        let autoRed = null;
         if(state.empresa !== 'ONM HEALTH'){
-          const autoRed = onmFase2AutoRed(nat.red);
-          if(autoRed && CONTAS_BY_RED[autoRed]){
-            acCredito.setValue(autoRed);
-            wrapCred.classList.add('locked');
-            credInput.readOnly = true;
-            if(creditoWarn) creditoWarn.style.display = 'none';
-          }else if(autoRed && !CONTAS_BY_RED[autoRed]){
-            if(creditoWarn){
-              creditoWarn.style.display = '';
-              creditoWarn.textContent = `Conta ${autoRed} não existe no plano de contas — selecione manualmente por enquanto.`;
-            }
-          }else if(creditoWarn){
-            creditoWarn.style.display = 'none';
+          autoRed = onmFase2AutoRed(nat.red); // checa se a conta da natureza começa com 4.1 ou 4.2
+        }
+        if(autoRed && CONTAS_BY_RED[autoRed]){
+          // Conta 4.1/4.2: Débito vira a conta fixa (1990/1092), não a conta da natureza. Crédito fica livre.
+          acDebito.setValue(autoRed);
+          wrapDeb.classList.add('locked');
+          debInput.readOnly = true;
+          if(debitoWarn) debitoWarn.style.display = 'none';
+        }else if(autoRed && !CONTAS_BY_RED[autoRed]){
+          // Regra bateria, mas a conta (1990) não existe no plano de contas ainda.
+          wrapDeb.classList.remove('locked');
+          debInput.readOnly = false;
+          if(debitoWarn){
+            debitoWarn.style.display = '';
+            debitoWarn.textContent = `Conta ${autoRed} não existe no plano de contas — selecione manualmente por enquanto.`;
           }
+        }else{
+          // Regra da natureza (4.1/4.2) não se aplica — comportamento padrão: Débito = conta da natureza.
+          acDebito.setValue(nat.red);
+          wrapDeb.classList.add('locked');
+          debInput.readOnly = true;
+          if(debitoWarn) debitoWarn.style.display = 'none';
         }
       }else if(tipoLanc === 'reversao'){
         acCredito.setValue(nat.red);
