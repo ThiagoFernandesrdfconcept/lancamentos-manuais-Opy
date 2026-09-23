@@ -1767,9 +1767,31 @@ function afterRender(){
           if(debitoWarn) debitoWarn.style.display = 'none';
         }
       }else if(tipoLanc === 'reversao'){
-        acCredito.setValue(nat.red);
-        wrapCred.classList.add('locked');
-        credInput.readOnly = true;
+        const creditoWarn = document.getElementById('creditoAutoWarn');
+        let autoRed = null;
+        if(state.empresa !== 'ONM HEALTH'){
+          autoRed = onmFase2AutoRed(nat.red); // mesmo critério: conta da natureza começando com 4.1 ou 4.2
+        }
+        if(autoRed && CONTAS_BY_RED[autoRed]){
+          // Conta 4.1/4.2: Crédito vira a conta fixa (1990/1092), não a conta da natureza. Débito fica livre.
+          acCredito.setValue(autoRed);
+          wrapCred.classList.add('locked');
+          credInput.readOnly = true;
+          if(creditoWarn) creditoWarn.style.display = 'none';
+        }else if(autoRed && !CONTAS_BY_RED[autoRed]){
+          wrapCred.classList.remove('locked');
+          credInput.readOnly = false;
+          if(creditoWarn){
+            creditoWarn.style.display = '';
+            creditoWarn.textContent = `Conta ${autoRed} não existe no plano de contas — selecione manualmente por enquanto.`;
+          }
+        }else{
+          // Regra não se aplica — comportamento padrão: Crédito = conta da natureza.
+          acCredito.setValue(nat.red);
+          wrapCred.classList.add('locked');
+          credInput.readOnly = true;
+          if(creditoWarn) creditoWarn.style.display = 'none';
+        }
       }
     }
     if(pre && pre.natureza) applyNaturezaLock();
