@@ -1298,14 +1298,23 @@ function renderModeloUsoPanel(){
     <input id="uso_ndoc" type="text" inputmode="numeric" placeholder="ex: 72026">
   </div>
   <div class="divider"></div>
-  ${m.linhas.map((l,i) => {
-    const deb = CONTAS_BY_RED[l.debito]; const cred = CONTAS_BY_RED[l.credito];
-    const cr = l.cr ? (CENTROS_BY_CODE[l.cr] ? CENTROS_BY_CODE[l.cr].desc : l.cr) : '—';
-    const histPreview = l.historico;
-    const ultimoValor = getUltimoValorLinha(state.empresa, m.id, i, l.debito, l.credito, l.cr);
-    const valorParaExibir = ultimoValor != null ? ultimoValor : (typeof l.valorRef === 'number' ? l.valorRef : null);
-    const valorInicial = valorParaExibir != null ? formatBRL(valorParaExibir) : '';
-    return `<div style="padding:10px 0;border-bottom:1px solid var(--line-soft);">
+  ${(() => {
+    let lastGrupo = null;
+    return m.linhas.map((l,i) => {
+      const deb = CONTAS_BY_RED[l.debito]; const cred = CONTAS_BY_RED[l.credito];
+      const cr = l.cr ? (CENTROS_BY_CODE[l.cr] ? CENTROS_BY_CODE[l.cr].desc : l.cr) : '—';
+      const histPreview = l.historico;
+      const ultimoValor = getUltimoValorLinha(state.empresa, m.id, i, l.debito, l.credito, l.cr);
+      const valorParaExibir = ultimoValor != null ? ultimoValor : (typeof l.valorRef === 'number' ? l.valorRef : null);
+      const valorInicial = valorParaExibir != null ? formatBRL(valorParaExibir) : '';
+      const grupoMatch = (l.historico||'').match(/RATEIO ND\s+([A-ZÀ-Ú]+)/);
+      const grupo = grupoMatch ? grupoMatch[1] : null;
+      let headerHtml = '';
+      if(grupo && grupo !== lastGrupo){
+        headerHtml = `<div style="background:#2e7d32;color:#fff;font-weight:700;font-size:12.5px;padding:7px 10px;margin-top:${i===0?'0':'14px'};border-radius:5px;letter-spacing:.3px;">${escapeHtml(grupo)}</div>`;
+        lastGrupo = grupo;
+      }
+      return headerHtml + `<div style="padding:10px 0;border-bottom:1px solid var(--line-soft);">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <div style="font-size:12px;color:var(--ink-soft);" id="uso_deblabel_${i}"><span class="mono">${l.debito}</span> → <span class="mono">${l.credito}</span></div>
         <label style="font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:4px;white-space:nowrap;">
@@ -1319,7 +1328,8 @@ function renderModeloUsoPanel(){
       </div>
       ${ultimoValor != null ? `<div class="small-note" style="margin-top:3px;">Valor sugerido com base no último lançamento (mesma conta/CR). Ajuste se necessário.</div>` : (valorParaExibir != null ? `<div class="small-note" style="margin-top:3px;">Valor de referência (última implantação). Ajuste se necessário.</div>` : '')}
     </div>`;
-  }).join('')}
+    }).join('');
+  })()}
   <div class="btn-row">
     <button class="btn" id="btnAdicionarLote">Adicionar ${m.linhas.length} lançamentos</button>
     <button class="btn secondary" id="btnCancelarUsoModelo">Cancelar</button>
