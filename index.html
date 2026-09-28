@@ -7,6 +7,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
@@ -415,6 +416,7 @@ let state = {
   tema: 'auto',
   editingId: null,
   revertendoId: null,
+  revertendoParId: null,
   selectedLoteView: {},
   selectedLoteLiberacao: {},
   filtroNat: '',
@@ -422,6 +424,7 @@ let state = {
   filtroPlano: '',
   filtroCentroBrowse: '',
   filtroNaturezaBrowse: '',
+  excelFiltro: { status: 'liberados', empresa: 'todas', lote: '', dataIni: '', dataFim: '', cr: '', natureza: '' },
 };
 
 // ---------- Storage ----------
@@ -723,6 +726,56 @@ function applyMoneyMask(el){
     el.setSelectionRange(el.value.length, el.value.length);
   });
 }
+function maskCnpj(digits){
+  digits = digits.slice(0,14);
+  let out = '';
+  for(let i=0;i<digits.length;i++){
+    if(i===2 || i===5) out += '.';
+    if(i===8) out += '/';
+    if(i===12) out += '-';
+    out += digits[i];
+  }
+  return out;
+}
+function setupParceiroCnpj(){
+  const cnpjInput = document.getElementById('f_parceiroCnpj');
+  const nomeInput = document.getElementById('f_parceiroNome');
+  const statusEl = document.getElementById('parceiroCnpjStatus');
+  if(!cnpjInput || cnpjInput.dataset.wired) return;
+  cnpjInput.dataset.wired = '1';
+  let lastLookedUp = '';
+  let debounceTimer = null;
+  cnpjInput.addEventListener('input', () => {
+    const digits = cnpjInput.value.replace(/\D/g,'').slice(0,14);
+    const cursorWasAtEnd = cnpjInput.selectionStart === cnpjInput.value.length;
+    cnpjInput.value = maskCnpj(digits);
+    if(cursorWasAtEnd) cnpjInput.setSelectionRange(cnpjInput.value.length, cnpjInput.value.length);
+    if(statusEl && digits.length < 14){ statusEl.textContent = ''; statusEl.style.color = ''; }
+    clearTimeout(debounceTimer);
+    if(digits.length === 14 && digits !== lastLookedUp){
+      debounceTimer = setTimeout(() => buscarCnpj(digits), 400);
+    }
+  });
+  async function buscarCnpj(digits){
+    lastLookedUp = digits;
+    if(statusEl){ statusEl.textContent = 'Consultando CNPJ na Receita Federal...'; statusEl.style.color = 'var(--muted)'; }
+    try{
+      const resp = await fetch('https://brasilapi.com.br/api/cnpj/v1/' + digits);
+      if(!resp.ok) throw new Error('não encontrado');
+      const data = await resp.json();
+      const nome = data.razao_social || data.nome_fantasia || '';
+      if(nome){
+        nomeInput.value = nome;
+        if(typeof window.__onParceiroNomeAutoFill === 'function') window.__onParceiroNomeAutoFill();
+        if(statusEl){ statusEl.textContent = 'Encontrado: ' + nome; statusEl.style.color = 'var(--ok, #2a7d46)'; }
+      }else{
+        if(statusEl){ statusEl.textContent = 'CNPJ consultado, mas sem razão social — preencha o nome manualmente.'; statusEl.style.color = 'var(--warn)'; }
+      }
+    }catch(err){
+      if(statusEl){ statusEl.textContent = 'Não foi possível consultar automaticamente — preencha o nome manualmente.'; statusEl.style.color = 'var(--warn)'; }
+    }
+  }
+}
 function revertLineageNote(e){
   let parts = '';
   if(e.revertidoPara){
@@ -773,7 +826,7 @@ function entriesForLote(lote){
   return entriesForEmpresa().filter(l => String(l.lote) === String(lote)).sort((a,b)=>a.criadoEm-b.criadoEm);
 }
 function renderCompanyTabs(){
-  return `<div class="company-tabs">${EMPRESAS.map(emp =>
+  return `<div class="company-tabs">${empresasPermitidas().map(emp =>
     `<button class="company-tab ${emp===state.empresa?'active':''}" data-empresa="${escapeHtml(emp)}">${escapeHtml(emp)}</button>`
   ).join('')}</div>`;
 }
@@ -982,6 +1035,7 @@ function renderLancar(){
     historico: 'REVERSÃO - ' + revertOriginal.historico,
     natureza: revertOriginal.natureza,
     tipoLanc: revertOriginal.tipoLanc === 'provisao' ? 'reversao' : (revertOriginal.tipoLanc === 'reversao' ? 'provisao' : 'direto'),
+    parceiroCnpj: revertOriginal.parceiroCnpj || '', parceiroNome: revertOriginal.parceiroNome || '',
   } : null);
   const lotesDatalist = buildLotesDatalistOptions();
   const preLoteNome = pre ? nomeDoLote(pre.lote) : '';
@@ -1089,10 +1143,21 @@ function renderLancar(){
         ${(!editing && !revertOriginal) ? '<div class="small-note" style="margin-top:4px;">Dica: em linhas de modelo, use <span class="mono">{MM/AAAA}</span> no histórico (ex: "Provisao PPR {MM/AAAA}") para o mês/ano ser preenchido automaticamente ao usar o modelo.</div>' : ''}
         <div class="char-count"><span id="histCount">0</span>/140</div>
       </div>
+      <div class="grid grid-2" style="margin-top:14px;">
+        <div class="field">
+          <label>Parceiro — CNPJ <span style="font-weight:400;color:var(--muted)">(opcional)</span></label>
+          <input id="f_parceiroCnpj" type="text" inputmode="numeric" placeholder="00.000.000/0000-00" maxlength="18" value="${pre && pre.parceiroCnpj ? escapeHtml(pre.parceiroCnpj) : ''}">
+          <div class="small-note" id="parceiroCnpjStatus" style="margin-top:4px;"></div>
+        </div>
+        <div class="field">
+          <label>Parceiro — Nome</label>
+          <input id="f_parceiroNome" type="text" placeholder="Preenchido automaticamente pelo CNPJ, ou digite manualmente" value="${pre && pre.parceiroNome ? escapeHtml(pre.parceiroNome) : ''}">
+        </div>
+      </div>
       <div class="btn-row">
         <button class="btn" id="btnSalvar">${editing ? 'Salvar edição' : (revertOriginal ? 'Adicionar reversão' : 'Adicionar lançamento')}</button>
         ${(!editing && !revertOriginal) ? '<button class="btn secondary" id="btnAddLinhaModelo">+ Adicionar linha ao modelo</button>' : ''}
-        ${(editing || revertOriginal) ? '<button class="btn secondary" id="btnCancelarEdicao">Cancelar</button>' : ''}
+        <button class="btn secondary" id="btnCancelarEdicao">Cancelar</button>
       </div>
       ${!editing && !revertOriginal && state.modeloDraft.length > 0 ? renderModeloDraft() : ''}
     </div>
@@ -1361,7 +1426,65 @@ function renderNaturezaTab(){
 }
 
 // ---------- Tab: Lotes ----------
+function renderRevertParOnmPanel(){
+  const grupoId = state.revertendoParId;
+  const par = state.lancamentos.filter(l => l.parDuploId === grupoId);
+  const fase1 = par.find(l => l.faseDupla === 1);
+  const fase2 = par.find(l => l.faseDupla === 2);
+  if(!fase1 || !fase2){
+    state.revertendoParId = null;
+    return `<div class="page-header"><h1>Lotes &amp; conferência</h1></div>
+    <div class="empty-state"><h3>Não encontrado</h3><p>Não foi possível localizar os 2 lançamentos desta provisão ONM.</p></div>`;
+  }
+  const nat = fase1.natureza ? NATUREZAS_BY_CODE[fase1.natureza] : null;
+  let credRev1 = fase1.debito;
+  if(nat){
+    const autoRed = onmFase2AutoRed(nat.red);
+    if(autoRed && CONTAS_BY_RED[autoRed]) credRev1 = String(autoRed);
+  }
+  const debRev1 = fase1.credito;
+  const debRev2 = fase2.credito;
+  const credRev2 = fase2.debito;
+  const d1 = CONTAS_BY_RED[debRev1], c1 = CONTAS_BY_RED[credRev1];
+  const d2 = CONTAS_BY_RED[debRev2], c2 = CONTAS_BY_RED[credRev2];
+  const jaRevertido = !!(fase1.revertidoPara || fase2.revertidoPara);
+  return `
+  <div class="page-header">
+    <h1>Reverter Provisão ONM (2 fases)</h1>
+    <p>Confirme o lote e a data da reversão — os 2 lançamentos vinculados são revertidos juntos.</p>
+  </div>
+  <div class="panel" style="background:var(--warn-soft);border-color:transparent;margin-bottom:16px;padding:12px 16px;">
+    <div style="font-size:12.5px;color:var(--ink);"><b>Revertendo:</b> ${escapeHtml(fase1.historico)} — Lote ${escapeHtml(fase1.lote)}${nomeDoLote(fase1.lote) ? ' ('+escapeHtml(nomeDoLote(fase1.lote))+')' : ''}, lançado em ${formatDateBR(fase1.data)} por ${escapeHtml(fase1.criadoPor||'—')}</div>
+  </div>
+  ${jaRevertido ? `<div class="empty-state"><h3>Já revertida</h3><p>Essa provisão já foi revertida.</p></div>
+  <div class="btn-row"><button class="btn secondary" id="btnCancelarRevertPar">Voltar</button></div>` : `
+  <div class="panel">
+    <div class="panel-title">Dados da reversão &nbsp;·&nbsp; <span style="color:var(--accent-dark);">${escapeHtml(fase1.empresa)}</span></div>
+    <div class="grid grid-2">
+      <div class="field">
+        <label>Lote (Sankhya)</label>
+        <input list="lotesListRevPar" id="rp_lote" type="text" inputmode="numeric" placeholder="ex: 903">
+        <datalist id="lotesListRevPar">${buildLotesDatalistOptions()}</datalist>
+      </div>
+      <div class="field">
+        <label>Data do movimento</label>
+        <input id="rp_data" type="date">
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="panel-title" style="margin-bottom:8px;">Pré-visualização das 2 reversões</div>
+    <div style="font-size:12.5px;margin-bottom:6px;"><b>Fase 1:</b> Débito <span class="mono">${debRev1}</span> (${escapeHtml(d1?d1.desc:'')}) → Crédito <span class="mono">${credRev1}</span> (${escapeHtml(c1?c1.desc:'')}) &nbsp; R$ ${formatBRL(fase1.valor)}</div>
+    <div style="font-size:12.5px;margin-bottom:12px;"><b>Fase 2:</b> Débito <span class="mono">${debRev2}</span> (${escapeHtml(d2?d2.desc:'')}) → Crédito <span class="mono">${credRev2}</span> (${escapeHtml(c2?c2.desc:'')}) &nbsp; R$ ${formatBRL(fase2.valor)}</div>
+    <div class="btn-row">
+      <button class="btn" id="btnConfirmarRevertPar">Confirmar reversão (2 lançamentos)</button>
+      <button class="btn secondary" id="btnCancelarRevertPar">Cancelar</button>
+    </div>
+  </div>
+  `}
+  `;
+}
 function renderLotes(){
+  if(state.revertendoParId) return renderRevertParOnmPanel();
   const lotes = distinctLotes();
   if(lotes.length === 0){
     return `<div class="page-header"><h1>Lotes &amp; conferência</h1><p>Nenhum lançamento cadastrado para ${escapeHtml(state.empresa)} ainda.</p></div>
@@ -1408,7 +1531,7 @@ function renderLotes(){
       <td class="mono">${e.credito}<br><span style="color:var(--muted);font-family:'Inter';font-size:11px;">${escapeHtml(cred?cred.desc:'')}</span></td>
       <td>${escapeHtml(e.nDoc)}</td>
       <td class="num">${formatBRL(e.valor)}</td>
-      <td style="max-width:190px;">${escapeHtml(e.historico)}<br><span style="color:var(--muted);font-size:10.5px;">lançado por ${escapeHtml(e.criadoPor||'—')}${e.criadoSetor ? ' ('+escapeHtml(e.criadoSetor)+')' : ''} · ${formatDateTimeBR(e.criadoEm)}</span>${revertLineageNote(e)}</td>
+      <td style="max-width:190px;">${escapeHtml(e.historico)}${e.parceiroNome || e.parceiroCnpj ? `<br><span style="color:var(--ink-soft);font-size:10.5px;">Parceiro: ${escapeHtml(e.parceiroNome || e.parceiroCnpj)}</span>` : ''}<br><span style="color:var(--muted);font-size:10.5px;">lançado por ${escapeHtml(e.criadoPor||'—')}${e.criadoSetor ? ' ('+escapeHtml(e.criadoSetor)+')' : ''} · ${formatDateTimeBR(e.criadoEm)}</span>${revertLineageNote(e)}</td>
       <td style="max-width:150px;font-size:11.5px;">${crInfo ? escapeHtml(crInfo) : '<span style="color:var(--muted);">—</span>'}</td>
       <td style="max-width:150px;font-size:11.5px;">${natInfo ? escapeHtml(natInfo) : '<span style="color:var(--muted);">—</span>'}</td>
       <td>${e.exportado ? `<span class="badge ok">NUMLAN ${e.numlan}</span>` : (e.liberado ? '<span class="badge ok">liberado</span>' : '<span class="badge warn">aguard. liberação</span>')}</td>
@@ -1474,7 +1597,161 @@ function renderLotes(){
       </div>
     </div>
   </div>
+  ${renderExcelExportPanel()}
   `;
+}
+
+// ---------- Exportar lançamentos em Excel ----------
+function excelEntriesBase(){
+  const f = state.excelFiltro;
+  const permitidas = empresasPermitidas();
+  return state.lancamentos.filter(e => {
+    if(!permitidas.includes(e.empresa)) return false;
+    if(f.empresa !== 'todas' && e.empresa !== f.empresa) return false;
+    if(f.lote && e.lote !== f.lote) return false;
+    if(f.dataIni && e.data < f.dataIni) return false;
+    if(f.dataFim && e.data > f.dataFim) return false;
+    if(f.status === 'liberados' && !(e.liberado && !e.exportado)) return false;
+    if(f.status === 'aguardando' && !(!e.liberado && !e.exportado)) return false;
+    if(f.status === 'exportados' && !e.exportado) return false;
+    return true;
+  });
+}
+function excelEntriesFiltered(){
+  const f = state.excelFiltro;
+  return excelEntriesBase().filter(e => {
+    if(f.cr && e.cr !== f.cr) return false;
+    if(f.natureza && e.natureza !== f.natureza) return false;
+    return true;
+  });
+}
+function excelLotesDisponiveis(){
+  const f = state.excelFiltro;
+  const permitidas = empresasPermitidas();
+  const base = state.lancamentos.filter(e => permitidas.includes(e.empresa) && (f.empresa === 'todas' || e.empresa === f.empresa));
+  return Array.from(new Set(base.map(e => e.lote))).sort();
+}
+function statusLabel(e){
+  if(e.exportado) return 'Exportado';
+  if(e.liberado) return 'Liberado';
+  return 'Aguardando liberação';
+}
+function renderExcelExportPanel(){
+  const f = state.excelFiltro;
+  const lotesDisp = excelLotesDisponiveis();
+  const base = excelEntriesBase();
+  const crDisp = Array.from(new Set(base.filter(e=>e.cr).map(e=>e.cr))).sort();
+  const natDisp = Array.from(new Set(base.filter(e=>e.natureza).map(e=>e.natureza))).sort();
+  const filtered = excelEntriesFiltered();
+  return `
+  <div class="panel" style="margin-top:20px;">
+    <div class="panel-title">Exportar lançamentos em Excel</div>
+    <p class="small-note" style="margin-top:-4px;margin-bottom:12px;">Gera uma planilha com os lançamentos que atendem aos filtros abaixo — independente do lote selecionado acima, e podendo somar todas as empresas.</p>
+    <div class="grid grid-3" style="margin-bottom:12px;">
+      <div class="field">
+        <label>Status</label>
+        <select id="excel_status">
+          <option value="todos" ${f.status==='todos'?'selected':''}>Todos</option>
+          <option value="liberados" ${f.status==='liberados'?'selected':''}>Liberados (não exportados)</option>
+          <option value="aguardando" ${f.status==='aguardando'?'selected':''}>Aguardando liberação</option>
+          <option value="exportados" ${f.status==='exportados'?'selected':''}>Já exportados</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Empresa</label>
+        <select id="excel_empresa">
+          <option value="todas" ${f.empresa==='todas'?'selected':''}>Todas as suas empresas</option>
+          ${empresasPermitidas().map(emp => `<option value="${escapeHtml(emp)}" ${f.empresa===emp?'selected':''}>${escapeHtml(emp)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Lote</label>
+        <select id="excel_lote">
+          <option value="">Todos os lotes</option>
+          ${lotesDisp.map(l => `<option value="${escapeHtml(l)}" ${f.lote===l?'selected':''}>Lote ${escapeHtml(l)}${nomeDoLote(l) ? ' — '+escapeHtml(nomeDoLote(l)) : ''}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="grid grid-4" style="margin-bottom:12px;">
+      <div class="field">
+        <label>Período — de</label>
+        <input id="excel_dataIni" type="date" value="${f.dataIni||''}">
+      </div>
+      <div class="field">
+        <label>Período — até</label>
+        <input id="excel_dataFim" type="date" value="${f.dataFim||''}">
+      </div>
+      <div class="field">
+        <label>Centro de Resultado</label>
+        <select id="excel_cr">
+          <option value="">Todos</option>
+          ${crDisp.map(c => `<option value="${escapeHtml(c)}" ${f.cr===c?'selected':''}>${escapeHtml(c)} — ${escapeHtml(CENTROS_BY_CODE[c]?CENTROS_BY_CODE[c].desc:'')}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Natureza</label>
+        <select id="excel_natureza">
+          <option value="">Todas</option>
+          ${natDisp.map(n => `<option value="${escapeHtml(n)}" ${f.natureza===n?'selected':''}>${escapeHtml(n)} — ${escapeHtml(NATUREZAS_BY_CODE[n]?NATUREZAS_BY_CODE[n].desc:'')}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="kv"><span>Lançamentos encontrados</span><b>${filtered.length}</b></div>
+    <div class="kv"><span>Total</span><b>R$ ${formatBRL(filtered.reduce((s,e)=>s+e.valor,0))}</b></div>
+    <div class="btn-row">
+      <button class="btn" id="btnExportarExcel" ${filtered.length===0?'disabled':''}>Baixar Excel (${filtered.length})</button>
+    </div>
+  </div>`;
+}
+function gerarExcelLancamentos(){
+  const entries = excelEntriesFiltered().slice().sort((a,b) => {
+    if(a.empresa !== b.empresa) return a.empresa < b.empresa ? -1 : 1;
+    if(a.lote !== b.lote) return a.lote < b.lote ? -1 : 1;
+    return (a.data || '') < (b.data || '') ? -1 : 1;
+  });
+  const rows = entries.map(e => {
+    const deb = CONTAS_BY_RED[e.debito];
+    const cred = CONTAS_BY_RED[e.credito];
+    return {
+      'Empresa': e.empresa,
+      'Lote': e.lote,
+      'Nome do Lote': nomeDoLote(e.lote) || '',
+      'Data': formatDateBR(e.data),
+      'Débito (código)': e.debito,
+      'Débito (nome)': deb ? deb.desc : '',
+      'Crédito (código)': e.credito,
+      'Crédito (nome)': cred ? cred.desc : '',
+      'Valor': e.valor,
+      'Nº Documento': e.nDoc,
+      'Histórico': e.historico,
+      'Parceiro (CNPJ)': e.parceiroCnpj || '',
+      'Parceiro (Nome)': e.parceiroNome || '',
+      'Centro de Resultado': e.cr ? (e.cr + (CENTROS_BY_CODE[e.cr] ? ' — '+CENTROS_BY_CODE[e.cr].desc : '')) : '',
+      'Natureza': e.natureza ? (e.natureza + (NATUREZAS_BY_CODE[e.natureza] ? ' — '+NATUREZAS_BY_CODE[e.natureza].desc : '')) : '',
+      'Tipo': e.tipoLanc === 'provisao' ? 'Provisão' : (e.tipoLanc === 'reversao' ? 'Reversão' : 'Direto'),
+      'Status': statusLabel(e),
+      'Lançado por': e.criadoPor || '',
+      'Setor': e.criadoSetor || '',
+      'Data e hora do lançamento': formatDateTimeBR(e.criadoEm),
+      'Liberado por': e.liberadoPor || '',
+      'NUMLAN': e.numlan || ''
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    {wch:16},{wch:10},{wch:22},{wch:11},{wch:14},{wch:28},{wch:14},{wch:28},
+    {wch:13},{wch:12},{wch:34},{wch:20},{wch:28},{wch:28},{wch:26},{wch:10},{wch:20},
+    {wch:20},{wch:16},{wch:18},{wch:16},{wch:9}
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos');
+  const f = state.excelFiltro;
+  const partes = ['Lancamentos'];
+  if(f.empresa !== 'todas') partes.push(f.empresa.replace(/[^A-Za-z0-9]+/g,'_'));
+  if(f.lote) partes.push('Lote'+f.lote);
+  partes.push(f.status);
+  const nomeArq = partes.join('_') + '.xlsx';
+  XLSX.writeFile(wb, nomeArq);
 }
 
 // ---------- Tab: Liberação ----------
@@ -1670,6 +1947,7 @@ function afterRender(){
       debito: revertOriginal.credito, credito: revertOriginal.debito,
       cr: revertOriginal.cr, natureza: revertOriginal.natureza,
       tipoLanc: revertOriginal.tipoLanc === 'provisao' ? 'reversao' : (revertOriginal.tipoLanc === 'reversao' ? 'provisao' : 'direto'),
+      parceiroCnpj: revertOriginal.parceiroCnpj || '', parceiroNome: revertOriginal.parceiroNome || '',
     } : null);
     let tipoLanc = (pre && pre.tipoLanc) || 'direto';
 
@@ -1803,6 +2081,7 @@ function afterRender(){
         chip.classList.add('active');
         tipoLanc = chip.dataset.tipo;
         applyNaturezaLock();
+        autoHistoricoProvisao();
       });
     });
     window.__onNaturezaPicked = applyNaturezaLock;
@@ -1814,6 +2093,20 @@ function afterRender(){
     const histCount = document.getElementById('histCount');
     histCount.textContent = histEl.value.length;
     histEl.addEventListener('input', () => histCount.textContent = histEl.value.length);
+
+    function autoHistoricoProvisao(){
+      if(editing || revertOriginal) return;
+      if(tipoLanc !== 'provisao') return;
+      const nDocVal = document.getElementById('f_ndoc').value.trim();
+      const parceiroVal = document.getElementById('f_parceiroNome').value.trim();
+      histEl.value = `VALOR REF.  PROVISAO "${nDocVal}" - "${parceiroVal}"`;
+      histCount.textContent = histEl.value.length;
+    }
+    document.getElementById('f_ndoc').addEventListener('input', autoHistoricoProvisao);
+    document.getElementById('f_parceiroNome').addEventListener('input', autoHistoricoProvisao);
+    window.__onParceiroNomeAutoFill = autoHistoricoProvisao;
+
+    setupParceiroCnpj();
 
     document.getElementById('f_lote').addEventListener('input', (e) => {
       const recentBox = document.getElementById('recentBox');
@@ -1837,6 +2130,8 @@ function afterRender(){
       const cr = document.getElementById('ac_cr_hidden').value;
       const historico = normalizeHistorico(document.getElementById('f_historico').value);
       const natureza = document.getElementById('ac_natureza_hidden').value;
+      const parceiroCnpj = document.getElementById('f_parceiroCnpj').value.trim();
+      const parceiroNome = document.getElementById('f_parceiroNome').value.trim();
 
       if(!state.meuNome || !state.meuNome.trim()){
         showToast('Preencha "Lançado por" na barra lateral antes de lançar.');
@@ -1871,7 +2166,7 @@ function afterRender(){
 
       if(state.editingId){
         const idx = state.lancamentos.findIndex(l => l.id === state.editingId);
-        state.lancamentos[idx] = {...state.lancamentos[idx], lote, empresa, data, debito, credito, valor, nDoc, cr, historico, natureza, tipoLanc};
+        state.lancamentos[idx] = {...state.lancamentos[idx], lote, empresa, data, debito, credito, valor, nDoc, cr, historico, natureza, tipoLanc, parceiroCnpj, parceiroNome};
         showToast('Lançamento atualizado.');
         state.editingId = null;
       }else if(isOnmProvisaoDupla){
@@ -1879,7 +2174,7 @@ function afterRender(){
         const id1 = uid();
         const id2 = uid();
         state.lancamentos.push({
-          id: id1, lote, empresa, data, debito, credito, valor, nDoc, cr, historico, natureza, tipoLanc,
+          id: id1, lote, empresa, data, debito, credito, valor, nDoc, cr, historico, natureza, tipoLanc, parceiroCnpj, parceiroNome,
           criadoPor: state.meuNome || 'não identificado',
           criadoSetor: state.meuSetor || '',
           criadoEm: Date.now(),
@@ -1887,7 +2182,7 @@ function afterRender(){
           parDuploId: grupoId, faseDupla: 1
         });
         state.lancamentos.push({
-          id: id2, lote, empresa, data, debito: fase2Debito, credito: debito, valor, nDoc, cr, historico, natureza, tipoLanc,
+          id: id2, lote, empresa, data, debito: fase2Debito, credito: debito, valor, nDoc, cr, historico, natureza, tipoLanc, parceiroCnpj, parceiroNome,
           criadoPor: state.meuNome || 'não identificado',
           criadoSetor: state.meuSetor || '',
           criadoEm: Date.now() + 1,
@@ -1898,7 +2193,7 @@ function afterRender(){
       }else{
         const novoId = uid();
         state.lancamentos.push({
-          id: novoId, lote, empresa, data, debito, credito, valor, nDoc, cr, historico, natureza, tipoLanc,
+          id: novoId, lote, empresa, data, debito, credito, valor, nDoc, cr, historico, natureza, tipoLanc, parceiroCnpj, parceiroNome,
           criadoPor: state.meuNome || 'não identificado',
           criadoSetor: state.meuSetor || '',
           criadoEm: Date.now(),
@@ -1920,7 +2215,12 @@ function afterRender(){
     });
 
     const btnCancelar = document.getElementById('btnCancelarEdicao');
-    if(btnCancelar) btnCancelar.addEventListener('click', () => { state.editingId = null; state.revertendoId = null; render(); });
+    if(btnCancelar) btnCancelar.addEventListener('click', () => {
+      const eraNovo = !state.editingId && !state.revertendoId;
+      state.editingId = null; state.revertendoId = null;
+      render();
+      if(eraNovo) showToast('Lançamento cancelado.');
+    });
 
     const btnAddLinha = document.getElementById('btnAddLinhaModelo');
     if(btnAddLinha) btnAddLinha.addEventListener('click', () => {
@@ -2152,6 +2452,65 @@ function afterRender(){
   }
 
   if(state.tab === 'lotes'){
+    const btnConfirmarRevertPar = document.getElementById('btnConfirmarRevertPar');
+    if(btnConfirmarRevertPar) btnConfirmarRevertPar.addEventListener('click', async () => {
+      const lote = document.getElementById('rp_lote').value.trim();
+      const data = document.getElementById('rp_data').value;
+      if(!lote){ showToast('Informe o lote.'); return; }
+      if(!data){ showToast('Informe a data do movimento.'); return; }
+      const grupoId = state.revertendoParId;
+      const par = state.lancamentos.filter(l => l.parDuploId === grupoId);
+      const fase1 = par.find(l => l.faseDupla === 1);
+      const fase2 = par.find(l => l.faseDupla === 2);
+      if(!fase1 || !fase2){ showToast('Não encontrei os 2 lançamentos desta provisão.'); return; }
+      if(fase1.revertidoPara || fase2.revertidoPara){ showToast('Essa provisão já foi revertida.'); return; }
+      const nat = fase1.natureza ? NATUREZAS_BY_CODE[fase1.natureza] : null;
+      let credRev1 = fase1.debito;
+      if(nat){
+        const autoRed = onmFase2AutoRed(nat.red);
+        if(autoRed && CONTAS_BY_RED[autoRed]) credRev1 = String(autoRed);
+      }
+      const grupoRevId = uid();
+      const idRev1 = uid();
+      const idRev2 = uid();
+      state.lancamentos.push({
+        id: idRev1, lote, empresa: fase1.empresa, data,
+        debito: fase1.credito, credito: credRev1,
+        valor: fase1.valor, nDoc: fase1.nDoc, cr: fase1.cr,
+        historico: 'REVERSÃO - ' + fase1.historico,
+        natureza: fase1.natureza, tipoLanc: 'reversao',
+        parceiroCnpj: fase1.parceiroCnpj || '', parceiroNome: fase1.parceiroNome || '',
+        criadoPor: state.meuNome || 'não identificado',
+        criadoSetor: state.meuSetor || '',
+        criadoEm: Date.now(),
+        exportado: false, numlan: null, revertidoDe: fase1.id,
+        parDuploId: grupoRevId, faseDupla: 1
+      });
+      state.lancamentos.push({
+        id: idRev2, lote, empresa: fase2.empresa, data,
+        debito: fase2.credito, credito: fase2.debito,
+        valor: fase2.valor, nDoc: fase2.nDoc, cr: fase2.cr,
+        historico: 'REVERSÃO - ' + fase2.historico,
+        natureza: fase2.natureza, tipoLanc: 'reversao',
+        parceiroCnpj: fase2.parceiroCnpj || '', parceiroNome: fase2.parceiroNome || '',
+        criadoPor: state.meuNome || 'não identificado',
+        criadoSetor: state.meuSetor || '',
+        criadoEm: Date.now() + 1,
+        exportado: false, numlan: null, revertidoDe: fase2.id,
+        parDuploId: grupoRevId, faseDupla: 2
+      });
+      const idx1 = state.lancamentos.findIndex(l => l.id === fase1.id);
+      const idx2 = state.lancamentos.findIndex(l => l.id === fase2.id);
+      if(idx1>=0) state.lancamentos[idx1].revertidoPara = idRev1;
+      if(idx2>=0) state.lancamentos[idx2].revertidoPara = idRev2;
+      state.revertendoParId = null;
+      await saveLancamentos();
+      showToast('2 lançamentos de reversão adicionados (Provisão ONM em 2 fases).');
+      render();
+    });
+    const btnCancelarRevertPar = document.getElementById('btnCancelarRevertPar');
+    if(btnCancelarRevertPar) btnCancelarRevertPar.addEventListener('click', () => { state.revertendoParId = null; render(); });
+
     document.querySelectorAll('#loteCards .lote-card').forEach(card => {
       card.addEventListener('click', () => {
         state.selectedLoteView[state.empresa] = card.dataset.lote;
@@ -2163,6 +2522,26 @@ function afterRender(){
     const fCr = document.getElementById('f_filtroCr');
     if(fNat) fNat.addEventListener('change', () => { state.filtroNat = fNat.value; render(); });
     if(fCr) fCr.addEventListener('change', () => { state.filtroCr = fCr.value; render(); });
+    const exStatus = document.getElementById('excel_status');
+    const exEmpresa = document.getElementById('excel_empresa');
+    const exLote = document.getElementById('excel_lote');
+    const exDataIni = document.getElementById('excel_dataIni');
+    const exDataFim = document.getElementById('excel_dataFim');
+    const exCr = document.getElementById('excel_cr');
+    const exNatureza = document.getElementById('excel_natureza');
+    if(exStatus) exStatus.addEventListener('change', () => { state.excelFiltro.status = exStatus.value; render(); });
+    if(exEmpresa) exEmpresa.addEventListener('change', () => { state.excelFiltro.empresa = exEmpresa.value; state.excelFiltro.lote = ''; state.excelFiltro.cr = ''; state.excelFiltro.natureza = ''; render(); });
+    if(exLote) exLote.addEventListener('change', () => { state.excelFiltro.lote = exLote.value; state.excelFiltro.cr = ''; state.excelFiltro.natureza = ''; render(); });
+    if(exDataIni) exDataIni.addEventListener('change', () => { state.excelFiltro.dataIni = exDataIni.value; render(); });
+    if(exDataFim) exDataFim.addEventListener('change', () => { state.excelFiltro.dataFim = exDataFim.value; render(); });
+    if(exCr) exCr.addEventListener('change', () => { state.excelFiltro.cr = exCr.value; render(); });
+    if(exNatureza) exNatureza.addEventListener('change', () => { state.excelFiltro.natureza = exNatureza.value; render(); });
+    const btnExportarExcel = document.getElementById('btnExportarExcel');
+    if(btnExportarExcel) btnExportarExcel.addEventListener('click', () => {
+      if(excelEntriesFiltered().length === 0){ showToast('Nenhum lançamento encontrado com esses filtros.'); return; }
+      gerarExcelLancamentos();
+      showToast('Excel gerado.');
+    });
     document.querySelectorAll('[data-edit]').forEach(btn => {
       btn.addEventListener('click', () => {
         setTab('lancar');
@@ -2172,6 +2551,13 @@ function afterRender(){
     });
     document.querySelectorAll('[data-reverter]').forEach(btn => {
       btn.addEventListener('click', () => {
+        const alvo = state.lancamentos.find(l => l.id === btn.dataset.reverter);
+        if(alvo && alvo.parDuploId){
+          // Provisão ONM em 2 fases — reverte as 2 de uma vez, sem sair da aba de Lotes.
+          state.revertendoParId = alvo.parDuploId;
+          render();
+          return;
+        }
         setTab('lancar');
         state.revertendoId = btn.dataset.reverter;
         render();
@@ -2339,7 +2725,21 @@ const PERMISSOES = {
   exportar: ['thiago.fernandes@rdfconcept.com.br', 'ana.bezerra@rdfconcept.com.br'],
   desbloquear: ['thiago.fernandes@rdfconcept.com.br']
 };
+// Restrição de acesso por empresa — usuários não listados aqui continuam
+// enxergando todas as empresas (comportamento padrão).
+const EMPRESAS_RESTRITAS = {
+  'solange.gomes@opyhealth.com.br': ['ONM HEALTH','OPY SERVIÇOS 4','OPY SERVIÇOS 5','OPY SERVIÇOS 6','OPY SERVIÇOS 7'],
+  'charles.araujo@opyhealth.com.br': ['ONM HEALTH','OPY SERVIÇOS 4','OPY SERVIÇOS 5','OPY SERVIÇOS 6','OPY SERVIÇOS 7'],
+  'marcos.costa@opyhealth.com.br': ['ONM HEALTH','OPY SERVIÇOS 4','OPY SERVIÇOS 5','OPY SERVIÇOS 6','OPY SERVIÇOS 7'],
+  'cleoson.pena@opyhealth.com.br': ['OZN HEALTH','ODR HEALTH','INFRASERV'],
+  'guilherme.beltrao@opyhealth.com.br': ['OZN HEALTH','ODR HEALTH','INFRASERV'],
+  'alexandre.menezes@opyhealth.com.br': ['OZN HEALTH','ODR HEALTH','INFRASERV'],
+};
 function meuEmailLogado(){ return (fbAuth.currentUser && fbAuth.currentUser.email) ? fbAuth.currentUser.email.toLowerCase() : ''; }
+function empresasPermitidas(){
+  const restricao = EMPRESAS_RESTRITAS[meuEmailLogado()];
+  return restricao ? EMPRESAS.filter(e => restricao.includes(e)) : EMPRESAS;
+}
 function podeLiberar(){ return PERMISSOES.liberar.includes(meuEmailLogado()); }
 function podeRevogarLiberacao(){ return PERMISSOES.revogarLiberacao.includes(meuEmailLogado()); }
 function podeExportar(){ return PERMISSOES.exportar.includes(meuEmailLogado()); }
@@ -2355,6 +2755,7 @@ async function startApp(){
   document.getElementById('loggedAsEmail').textContent = fbAuth.currentUser ? fbAuth.currentUser.email : '';
   document.getElementById('navExportar').style.display = podeExportar() ? '' : 'none';
   await loadState();
+  if(!empresasPermitidas().includes(state.empresa)) state.empresa = empresasPermitidas()[0];
   state.meuNome = nomeDoEmailLogado();
   setTab('lancar');
   setupRealtimeSync();
