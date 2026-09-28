@@ -425,6 +425,7 @@ let state = {
   filtroCentroBrowse: '',
   filtroNaturezaBrowse: '',
   excelFiltro: { status: 'liberados', empresa: 'todas', lote: '', dataIni: '', dataFim: '', cr: '', natureza: '' },
+  selecionadosExcluir: [],
 };
 
 // ---------- Storage ----------
@@ -1520,12 +1521,18 @@ function renderLotes(){
   });
   const totalFiltrado = entriesFiltered.reduce((s,e)=>s+e.valor,0);
 
+  const excluiveis = entriesFiltered.filter(e => !e.exportado && !e.liberado).map(e => e.id);
+  state.selecionadosExcluir = state.selecionadosExcluir.filter(id => excluiveis.includes(id));
+  const todosSelecionados = excluiveis.length > 0 && excluiveis.every(id => state.selecionadosExcluir.includes(id));
+
   const rows = entriesFiltered.map(e => {
     const deb = CONTAS_BY_RED[e.debito];
     const cred = CONTAS_BY_RED[e.credito];
     const crInfo = e.cr ? (e.cr + (CENTROS_BY_CODE[e.cr] ? ' — '+CENTROS_BY_CODE[e.cr].desc : '')) : '';
     const natInfo = e.natureza ? (e.natureza + (NATUREZAS_BY_CODE[e.natureza] ? ' — '+NATUREZAS_BY_CODE[e.natureza].desc : '')) : '';
+    const podeExcluirLinha = !e.exportado && !e.liberado;
     return `<tr>
+      <td style="width:30px;">${podeExcluirLinha ? `<input type="checkbox" class="chk-excluir-lote" data-id="${e.id}" ${state.selecionadosExcluir.includes(e.id)?'checked':''}>` : ''}</td>
       <td>${formatDateBR(e.data)}</td>
       <td class="mono">${e.debito}<br><span style="color:var(--muted);font-family:'Inter';font-size:11px;">${escapeHtml(deb?deb.desc:'')}</span></td>
       <td class="mono">${e.credito}<br><span style="color:var(--muted);font-family:'Inter';font-size:11px;">${escapeHtml(cred?cred.desc:'')}</span></td>
@@ -1589,9 +1596,15 @@ function renderLotes(){
           ${filtroAtivo ? `<div class="mono" style="font-size:15px;font-weight:600;">R$ ${formatBRL(totalFiltrado)} <span style="font-weight:400;font-family:'Inter';color:var(--muted);font-size:12px;">(${entriesFiltered.length} de ${entries.length})</span></div>` : ''}
         </div>
       </div>
+      ${state.selecionadosExcluir.length > 0 ? `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:var(--warn-soft);border-radius:8px;flex-shrink:0;">
+        <span style="font-size:12.5px;color:var(--ink);">${state.selecionadosExcluir.length} lançamento${state.selecionadosExcluir.length===1?'':'s'} selecionado${state.selecionadosExcluir.length===1?'':'s'}</span>
+        <button class="btn secondary" id="btnExcluirSelecionados" style="padding:6px 14px;font-size:12.5px;color:var(--danger);">Excluir selecionados</button>
+        <button class="btn secondary" id="btnLimparSelecao" style="padding:6px 14px;font-size:12.5px;">Limpar seleção</button>
+      </div>` : ''}
       <div class="tbl-scroll" style="flex:1;overflow:auto;min-height:0;">
         <table>
-          <thead><tr><th>Data</th><th>Débito</th><th>Crédito</th><th>Doc</th><th class="num">Valor</th><th>Histórico</th><th>Centro de Resultado</th><th>Natureza</th><th>Status</th><th>Ações</th></tr></thead>
+          <thead><tr><th style="width:30px;">${excluiveis.length > 0 ? `<input type="checkbox" id="chkExcluirTodos" ${todosSelecionados?'checked':''} title="Selecionar todos">` : ''}</th><th>Data</th><th>Débito</th><th>Crédito</th><th>Doc</th><th class="num">Valor</th><th>Histórico</th><th>Centro de Resultado</th><th>Natureza</th><th>Status</th><th>Ações</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -1929,6 +1942,7 @@ function afterRender(){
       state.usingModeloId = null;
       state.filtroNat = ''; state.filtroCr = '';
       state.filtroCentroBrowse = '';
+      state.selecionadosExcluir = [];
       await saveEmpresa(btn.dataset.empresa);
       render();
     });
@@ -2514,13 +2528,45 @@ function afterRender(){
       card.addEventListener('click', () => {
         state.selectedLoteView[state.empresa] = card.dataset.lote;
         state.filtroNat = ''; state.filtroCr = '';
+        state.selecionadosExcluir = [];
         render();
       });
     });
     const fNat = document.getElementById('f_filtroNat');
     const fCr = document.getElementById('f_filtroCr');
-    if(fNat) fNat.addEventListener('change', () => { state.filtroNat = fNat.value; render(); });
-    if(fCr) fCr.addEventListener('change', () => { state.filtroCr = fCr.value; render(); });
+    if(fNat) fNat.addEventListener('change', () => { state.filtroNat = fNat.value; state.selecionadosExcluir = []; render(); });
+    if(fCr) fCr.addEventListener('change', () => { state.filtroCr = fCr.value; state.selecionadosExcluir = []; render(); });
+    document.querySelectorAll('.chk-excluir-lote').forEach(chk => {
+      chk.addEventListener('change', () => {
+        const id = chk.dataset.id;
+        if(chk.checked){
+          if(!state.selecionadosExcluir.includes(id)) state.selecionadosExcluir.push(id);
+        }else{
+          state.selecionadosExcluir = state.selecionadosExcluir.filter(x => x !== id);
+        }
+        render();
+      });
+    });
+    const chkExcluirTodos = document.getElementById('chkExcluirTodos');
+    if(chkExcluirTodos) chkExcluirTodos.addEventListener('change', () => {
+      const ids = Array.from(document.querySelectorAll('.chk-excluir-lote')).map(c => c.dataset.id);
+      state.selecionadosExcluir = chkExcluirTodos.checked ? ids : [];
+      render();
+    });
+    const btnExcluirSelecionados = document.getElementById('btnExcluirSelecionados');
+    if(btnExcluirSelecionados) btnExcluirSelecionados.addEventListener('click', async () => {
+      const n = state.selecionadosExcluir.length;
+      if(n === 0) return;
+      if(!confirm(`Excluir ${n} lançamento${n===1?'':'s'} selecionado${n===1?'':'s'}? Essa ação não pode ser desfeita.`)) return;
+      const idsExcluir = state.selecionadosExcluir.slice();
+      state.lancamentos = state.lancamentos.filter(l => !idsExcluir.includes(l.id));
+      state.selecionadosExcluir = [];
+      await saveLancamentos();
+      showToast(`${n} lançamento${n===1?'':'s'} excluído${n===1?'':'s'}.`);
+      render();
+    });
+    const btnLimparSelecao = document.getElementById('btnLimparSelecao');
+    if(btnLimparSelecao) btnLimparSelecao.addEventListener('click', () => { state.selecionadosExcluir = []; render(); });
     const exStatus = document.getElementById('excel_status');
     const exEmpresa = document.getElementById('excel_empresa');
     const exLote = document.getElementById('excel_lote');
