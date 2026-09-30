@@ -312,7 +312,7 @@ td.num,th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
     <button class="navbtn" data-tab="naturezas"><span class="dot"></span>Natureza</button>
     <button class="navbtn" id="navGerenciarLotes" data-tab="gerenciarLotes"><span class="dot"></span>Gerenciar Lotes</button>
     <button class="navbtn" data-tab="lotes"><span class="dot"></span>Lotes &amp; conferência</button>
-    <button class="navbtn" data-tab="liberacao"><span class="dot"></span>Liberação</button>
+    <button class="navbtn" data-tab="liberacao"><span class="dot"></span>Liberação Ativos</button>
     <button class="navbtn" id="navLiberacaoHolding" data-tab="liberacaoHolding"><span class="dot"></span>Liberação OPY Holding</button>
     <button class="navbtn" id="navExportar" data-tab="exportar"><span class="dot"></span>Exportar p/ Sankhya</button>
     <div class="sidebar-footer">
@@ -2053,7 +2053,7 @@ function gerarExcelLancamentos(){
   XLSX.writeFile(wb, nomeArq);
 }
 
-// ---------- Tab: Liberação ----------
+// ---------- Tab: Liberação Ativos ----------
 function resumoLiberacao(){
   const permitidas = empresasPermitidas();
   const porEmpresa = permitidas.map(emp => {
@@ -2101,7 +2101,7 @@ function renderResumoLiberacao(){
 function renderLiberacao(){
   const lotes = distinctLotes();
   if(lotes.length === 0){
-    return `<div class="page-header"><h1>Liberação</h1><p>Nenhum lançamento cadastrado para ${escapeHtml(state.empresa)} ainda.</p></div>
+    return `<div class="page-header"><h1>Liberação Ativos</h1><p>Nenhum lançamento cadastrado para ${escapeHtml(state.empresa)} ainda.</p></div>
     ${renderResumoLiberacao()}
     ${renderCompanyTabs()}
     <div class="empty-state"><h3>Nada por aqui</h3><p>Cadastre lançamentos na aba "Novo lançamento" primeiro.</p></div>`;
@@ -2137,7 +2137,7 @@ function renderLiberacao(){
 
   return `
   <div class="page-header">
-    <h1>Liberação</h1>
+    <h1>Liberação Ativos</h1>
     <p>Só lançamentos liberados por um superior entram na exportação para o Sankhya.</p>
   </div>
   ${renderResumoLiberacao()}
@@ -2272,7 +2272,7 @@ function renderLiberacaoHolding(){
         <button class="btn" id="btnLiberarHoldingLote" ${entries.length===0?'disabled':''}>Liberar selecionados</button>
         <button class="btn secondary" id="btnRevogarHoldingLote" ${liberadosCount===0?'disabled':''}>Revogar selecionados</button>
       </div>
-      ${entries.length === 0 ? '<p class="small-note">Nenhum lançamento já liberado (1ª etapa) aguardando aqui. Verifique a aba "Liberação".</p>' : `
+      ${entries.length === 0 ? '<p class="small-note">Nenhum lançamento já liberado (1ª etapa) aguardando aqui. Verifique a aba "Liberação Ativos".</p>' : `
       <div class="tbl-scroll">
         <table>
           <thead><tr><th><input type="checkbox" id="checkAllLiberacaoHolding" checked></th><th>Data</th><th>Débito → Crédito</th><th class="num">Valor</th><th>Histórico</th><th>Status</th></tr></thead>
@@ -2364,7 +2364,7 @@ function renderExportar(){
         <button class="btn secondary" id="btnCopiarArquivo" ${pendentes.length===0?'disabled':''}>Copiar texto</button>
       </div>
       ${pendentes.length===0 && aguardandoLiberacao.length===0 && aguardandoHolding.length===0 ? '<p class="small-note">Todos os lançamentos deste lote já foram exportados.</p>' : ''}
-      ${aguardandoLiberacao.length>0 ? `<p class="small-note">${aguardandoLiberacao.length} lançamento(s) ainda aguardando liberação — vá em "Liberação" para aprová-los antes de exportar.</p>` : ''}
+      ${aguardandoLiberacao.length>0 ? `<p class="small-note">${aguardandoLiberacao.length} lançamento(s) ainda aguardando liberação — vá em "Liberação Ativos" para aprová-los antes de exportar.</p>` : ''}
       ${aguardandoHolding.length>0 ? `<p class="small-note">${aguardandoHolding.length} lançamento(s) já liberado(s), mas aguardando a Liberação OPY Holding antes de exportar.</p>` : ''}
       ${jaExportados.length>0 ? `
       <div class="divider"></div>
