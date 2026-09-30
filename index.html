@@ -400,7 +400,7 @@ function buildLotesDatalistOptions(){
 }
 const NAT_SUBGROUPS = NAT_SUBGROUPS_RAW.map(g => ({key:g[0], label:g[1]}));
 
-const EMPRESAS = ["OZN HEALTH","ONM HEALTH","ODR HEALTH","INFRASERV","OPY SERVIÇOS 4","OPY SERVIÇOS 5","OPY SERVIÇOS 6","OPY SERVIÇOS 7"];
+const EMPRESAS = ["OZN HEALTH","ONM HEALTH","ODR HEALTH","INFRASERV","OPY SERVIÇOS 4","OPY SERVIÇOS 5","OPY SERVIÇOS 6","OPY SERVIÇOS 7","OPY HOLDING","OME"];
 
 let state = {
   tab: 'lancar',
@@ -696,6 +696,58 @@ window.storage = {
     return { key, deleted: true, shared };
   }
 };
+
+// ---------- Aviso por e-mail: resumo diário de pendências na Liberação OPY Holding ----------
+// Depende da extensão oficial do Firebase "Trigger Email from Firestore"
+// (firestore-send-email) instalada no projeto, apontando para a coleção "mail".
+const HOLDING_DIGEST_EMAILS = ['thiago.fernandes@rdfconcept.com.br', 'milena.ribeiro@opyhealth.com.br', 'diogo.tsuda@opyhealth.com.br', 'beatriz.souza@opyhealth.com.br'];
+function hojeSP(){
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+}
+async function verificarEnvioDigestHolding(){
+  try{
+    const hoje = hojeSP();
+    const r = await window.storage.get('holding-digest-ultimo-envio', true);
+    if(r && r.value === hoje) return; // já foi enviado um resumo hoje
+
+    const pendentes = state.lancamentos.filter(e => e.liberado && !e.liberadoHolding && !e.exportado);
+    if(pendentes.length === 0) return; // nada pendente — não manda e-mail, e não marca como enviado (tenta de novo mais tarde no mesmo dia se aparecer algo)
+
+    // marca como enviado ANTES de gravar o e-mail, para reduzir o risco de duas pessoas
+    // abrindo o app quase ao mesmo tempo e disparando o resumo em duplicidade
+    await window.storage.set('holding-digest-ultimo-envio', hoje, true);
+
+    const porEmpresa = {};
+    pendentes.forEach(e => { (porEmpresa[e.empresa] = porEmpresa[e.empresa] || []).push(e); });
+    const totalValor = pendentes.reduce((s,e) => s + e.valor, 0);
+    const empresasOrdenadas = Object.keys(porEmpresa).sort();
+
+    const itensHtml = empresasOrdenadas.map(emp => {
+      const itens = porEmpresa[emp];
+      const lotes = Array.from(new Set(itens.map(e => e.lote))).sort();
+      const total = itens.reduce((s,e) => s + e.valor, 0);
+      return `<li><b>${escapeHtml(emp)}</b>: ${itens.length} lançamento(s) — R$ ${formatBRL(total)} — lote(s) ${escapeHtml(lotes.join(', '))}</li>`;
+    }).join('');
+    const itensTexto = empresasOrdenadas.map(emp => {
+      const itens = porEmpresa[emp];
+      const lotes = Array.from(new Set(itens.map(e => e.lote))).sort();
+      const total = itens.reduce((s,e) => s + e.valor, 0);
+      return `- ${emp}: ${itens.length} lançamento(s) — R$ ${formatBRL(total)} — lote(s) ${lotes.join(', ')}`;
+    }).join('\n');
+
+    const assunto = `[Lançamentos OPY] ${pendentes.length} lançamento(s) aguardando Liberação OPY Holding`;
+    const texto = `Existem ${pendentes.length} lançamento(s), totalizando R$ ${formatBRL(totalValor)}, aguardando a Liberação OPY Holding antes de seguir para exportação no Sankhya:\n\n${itensTexto}\n\nAcesse o app "Lançamentos Contábeis", aba "Liberação OPY Holding", para aprovar.`;
+    const html = `<p>Existem <b>${pendentes.length}</b> lançamento(s), totalizando <b>R$ ${formatBRL(totalValor)}</b>, aguardando a <b>Liberação OPY Holding</b> antes de seguir para exportação no Sankhya:</p><ul>${itensHtml}</ul><p>Acesse o app <b>Lançamentos Contábeis</b>, aba <b>"Liberação OPY Holding"</b>, para aprovar.</p>`;
+
+    await db.collection('mail').add({
+      to: HOLDING_DIGEST_EMAILS,
+      message: { subject: assunto, text: texto, html: html }
+    });
+  }catch(e){
+    // Nunca deve travar o carregamento do app por causa disso — só loga.
+    console.error('Falha ao verificar/enviar resumo de Liberação OPY Holding:', e);
+  }
+}
 
 // ---------- Live sync across users (Firestore onSnapshot — tempo real de verdade) ----------
 let __syncReady = false;
@@ -2992,6 +3044,8 @@ const EMPRESAS_RESTRITAS = {
   'cleoson.pena@opyhealth.com.br': ['OZN HEALTH','ODR HEALTH','INFRASERV'],
   'guilherme.beltrao@opyhealth.com.br': ['OZN HEALTH','ODR HEALTH','INFRASERV'],
   'alexandre.menezes@opyhealth.com.br': ['OZN HEALTH','ODR HEALTH','INFRASERV'],
+  'gabrielle.cardoso@opyhealth.com.br': ['ODR HEALTH','INFRASERV'],
+  'paula.martins@opyhealth.com.br': ['OME'],
 };
 function meuEmailLogado(){ return (fbAuth.currentUser && fbAuth.currentUser.email) ? fbAuth.currentUser.email.toLowerCase() : ''; }
 function empresasPermitidas(){
@@ -3019,6 +3073,7 @@ async function startApp(){
   state.meuNome = nomeDoEmailLogado();
   setTab('lancar');
   setupRealtimeSync();
+  verificarEnvioDigestHolding();
 }
 
 document.getElementById('btnLogin').addEventListener('click', async () => {
