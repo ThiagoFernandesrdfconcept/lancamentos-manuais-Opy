@@ -418,6 +418,7 @@ let state = {
   lotesExtras: [],
   lotesOcultos: [],
   criandoLote: false,
+  editandoLote: null,
   criandoConta: false,
   modeloDraft: [],
   usingModeloId: null,
@@ -1801,13 +1802,19 @@ function renderGerenciarLotes(){
     <td class="mono">${escapeHtml(l[0])}</td>
     <td>${escapeHtml(l[1])}</td>
     <td><span class="badge muted">padrão</span></td>
-    <td><button class="icon-btn" data-hidelote="${escapeHtml(l[0])}" style="color:var(--danger);">Excluir</button></td>
+    <td class="row-actions">
+      <button class="icon-btn" data-editlotebase="${escapeHtml(l[0])}" data-editlotenome="${escapeHtml(l[1])}">Editar</button>
+      <button class="icon-btn" data-hidelote="${escapeHtml(l[0])}" style="color:var(--danger);">Excluir</button>
+    </td>
   </tr>`).join('');
   const rowsExtras = extras.map(l => `<tr>
     <td class="mono">${escapeHtml(l.lote)}</td>
     <td>${escapeHtml(l.nome)}</td>
-    <td><span class="badge ok">criado por você</span></td>
-    <td><button class="icon-btn" data-dellote="${l.id}" style="color:var(--danger);">Excluir</button></td>
+    <td><span class="badge ok">${l.editadoDePadrao ? 'ajustado por você' : 'criado por você'}</span></td>
+    <td class="row-actions">
+      <button class="icon-btn" data-editloteextra="${l.id}">Editar</button>
+      <button class="icon-btn" data-dellote="${l.id}" style="color:var(--danger);">Excluir</button>
+    </td>
   </tr>`).join('');
   const rowsOcultados = ocultados.map(l => `<tr>
     <td class="mono">${escapeHtml(l[0])}</td>
@@ -1815,23 +1822,25 @@ function renderGerenciarLotes(){
     <td><span class="badge muted">excluído</span></td>
     <td><button class="icon-btn" data-restaurarlote="${escapeHtml(l[0])}">Restaurar</button></td>
   </tr>`).join('');
+  const ed = state.editandoLote;
+  const formAtivo = state.criandoLote || !!ed;
   return `
   <div class="page-header">
     <h1>Gerenciar Lotes</h1>
-    <p>Crie ou exclua lotes para ${escapeHtml(state.empresa)}. Visível só para o seu usuário.</p>
+    <p>Crie, edite ou exclua lotes para ${escapeHtml(state.empresa)}. Visível só para o seu usuário.</p>
   </div>
   ${renderCompanyTabs()}
   <div class="panel" style="max-width:720px;">
-    <div class="panel-title">${state.criandoLote ? 'Novo lote' : `Lotes de ${escapeHtml(state.empresa)}`}</div>
-    ${state.criandoLote ? `
+    <div class="panel-title">${state.criandoLote ? 'Novo lote' : (ed ? 'Editar lote' : `Lotes de ${escapeHtml(state.empresa)}`)}</div>
+    ${formAtivo ? `
       <div class="grid grid-2" style="margin-bottom:12px;">
         <div class="field">
           <label>Número do lote</label>
-          <input id="novoLoteNumero" type="text" inputmode="numeric" placeholder="ex: 920">
+          <input id="novoLoteNumero" type="text" inputmode="numeric" placeholder="ex: 920" value="${ed ? escapeHtml(ed.lote) : ''}">
         </div>
         <div class="field">
           <label>Nome do lote</label>
-          <input id="novoLoteNome" type="text" placeholder="ex: Apuração de PIS/COFINS">
+          <input id="novoLoteNome" type="text" placeholder="ex: Apuração de PIS/COFINS" value="${ed ? escapeHtml(ed.nome) : ''}">
         </div>
       </div>
       <div class="btn-row">
@@ -1849,7 +1858,7 @@ function renderGerenciarLotes(){
         </table>
       </div>
       ${(base.length + extras.length) === 0 ? '<p class="small-note">Nenhum lote cadastrado ainda para esta empresa.</p>' : ''}
-      <p class="small-note" style="margin-top:12px;">Excluir um lote "padrão" apenas some com ele da lista desta empresa (pode ser restaurado); lançamentos já feitos com ele continuam existindo.</p>
+      <p class="small-note" style="margin-top:12px;">Excluir um lote "padrão" apenas some com ele da lista desta empresa (pode ser restaurado); editar um lote "padrão" cria uma versão sua com os novos dados, mantendo o original guardado. Lançamentos já feitos continuam existindo do jeito que foram feitos.</p>
       ${ocultados.length > 0 ? `
       <div class="divider"></div>
       <div class="panel-title" style="font-size:13px;">Lotes padrão excluídos (${ocultados.length})</div>
@@ -3077,15 +3086,43 @@ function afterRender(){
   if(state.tab === 'gerenciarLotes'){
     if(!podeGerenciarLotes()) return;
     const btnNovo = document.getElementById('btnNovoLote');
-    if(btnNovo) btnNovo.addEventListener('click', () => { state.criandoLote = true; render(); });
+    if(btnNovo) btnNovo.addEventListener('click', () => { state.criandoLote = true; state.editandoLote = null; render(); });
     const btnCancelar = document.getElementById('btnCancelarNovoLote');
-    if(btnCancelar) btnCancelar.addEventListener('click', () => { state.criandoLote = false; render(); });
+    if(btnCancelar) btnCancelar.addEventListener('click', () => { state.criandoLote = false; state.editandoLote = null; render(); });
     const btnSalvar = document.getElementById('btnSalvarNovoLote');
     if(btnSalvar) btnSalvar.addEventListener('click', async () => {
       const numero = document.getElementById('novoLoteNumero').value.trim();
       const nome = document.getElementById('novoLoteNome').value.trim();
       if(!numero){ showToast('Informe o número do lote.'); return; }
       if(!nome){ showToast('Informe o nome do lote.'); return; }
+      const ed = state.editandoLote;
+
+      if(ed && ed.origem === 'extra'){
+        // permite manter o mesmo número; só bloqueia se colidir com outro lote diferente do que está sendo editado
+        const outros = lotesDaEmpresa().filter(l => String(l[0]) !== String(ed.lote));
+        if(outros.some(l => String(l[0]) === numero)){ showToast('Já existe outro lote com esse número para esta empresa.'); return; }
+        const idx = state.lotesExtras.findIndex(l => l.id === ed.id);
+        if(idx >= 0){ state.lotesExtras[idx].lote = numero; state.lotesExtras[idx].nome = nome; }
+        await saveLotesExtras();
+        state.criandoLote = false; state.editandoLote = null;
+        showToast('Lote atualizado.');
+        render();
+        return;
+      }
+
+      if(ed && ed.origem === 'base'){
+        const outros = lotesDaEmpresa().filter(l => String(l[0]) !== String(ed.lote));
+        if(outros.some(l => String(l[0]) === numero)){ showToast('Já existe outro lote com esse número para esta empresa.'); return; }
+        state.lotesOcultos.push({ empresa: state.empresa, lote: ed.lote });
+        state.lotesExtras.push({ id: uid(), empresa: state.empresa, lote: numero, nome: nome, editadoDePadrao: true });
+        await saveLotesOcultos();
+        await saveLotesExtras();
+        state.criandoLote = false; state.editandoLote = null;
+        showToast('Lote atualizado.');
+        render();
+        return;
+      }
+
       const jaExiste = lotesDaEmpresa().some(l => String(l[0]) === numero);
       if(jaExiste){ showToast('Já existe um lote com esse número para esta empresa.'); return; }
       state.lotesExtras.push({ id: uid(), empresa: state.empresa, lote: numero, nome: nome });
@@ -3093,6 +3130,22 @@ function afterRender(){
       state.criandoLote = false;
       showToast('Lote criado.');
       render();
+    });
+    document.querySelectorAll('[data-editlotebase]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.editandoLote = { origem: 'base', lote: btn.dataset.editlotebase, nome: btn.dataset.editlotenome };
+        state.criandoLote = false;
+        render();
+      });
+    });
+    document.querySelectorAll('[data-editloteextra]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = state.lotesExtras.find(l => l.id === btn.dataset.editloteextra);
+        if(!item) return;
+        state.editandoLote = { origem: 'extra', id: item.id, lote: item.lote, nome: item.nome };
+        state.criandoLote = false;
+        render();
+      });
     });
     document.querySelectorAll('[data-dellote]').forEach(btn => {
       btn.addEventListener('click', async () => {
