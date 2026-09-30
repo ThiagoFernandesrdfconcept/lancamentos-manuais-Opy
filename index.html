@@ -311,6 +311,7 @@ td.num,th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
     <button class="navbtn" data-tab="naturezas"><span class="dot"></span>Natureza</button>
     <button class="navbtn" data-tab="lotes"><span class="dot"></span>Lotes &amp; conferência</button>
     <button class="navbtn" data-tab="liberacao"><span class="dot"></span>Liberação</button>
+    <button class="navbtn" id="navLiberacaoHolding" data-tab="liberacaoHolding"><span class="dot"></span>Liberação OPY Holding</button>
     <button class="navbtn" id="navExportar" data-tab="exportar"><span class="dot"></span>Exportar p/ Sankhya</button>
     <div class="sidebar-footer">
       <label for="meuNomeInput">Lançado por</label>
@@ -419,6 +420,7 @@ let state = {
   revertendoParId: null,
   selectedLoteView: {},
   selectedLoteLiberacao: {},
+  selectedLoteLiberacaoHolding: {},
   filtroNat: '',
   filtroCr: '',
   filtroPlano: '',
@@ -1071,6 +1073,10 @@ function setTab(tab){
     showToast('Seu usuário não tem permissão para exportar.');
     tab = state.tab === 'exportar' ? 'lancar' : state.tab;
   }
+  if(tab === 'liberacaoHolding' && !podeLiberarHolding()){
+    showToast('Seu usuário não tem acesso à Liberação OPY Holding.');
+    tab = state.tab === 'liberacaoHolding' ? 'lancar' : state.tab;
+  }
   state.tab = tab;
   state.editingId = null;
   state.usingModeloId = null;
@@ -1087,6 +1093,7 @@ function render(){
   else if(state.tab === 'naturezas') main.innerHTML = renderNaturezaTab();
   else if(state.tab === 'lotes') main.innerHTML = renderLotes();
   else if(state.tab === 'liberacao') main.innerHTML = renderLiberacao();
+  else if(state.tab === 'liberacaoHolding') main.innerHTML = renderLiberacaoHolding();
   else if(state.tab === 'exportar') main.innerHTML = renderExportar();
   afterRender();
 }
@@ -1617,7 +1624,7 @@ function renderLotes(){
       <td style="max-width:190px;">${escapeHtml(e.historico)}${e.parceiroNome || e.parceiroCnpj ? `<br><span style="color:var(--ink-soft);font-size:10.5px;">Parceiro: ${escapeHtml(e.parceiroNome || e.parceiroCnpj)}</span>` : ''}<br><span style="color:var(--muted);font-size:10.5px;">lançado por ${escapeHtml(e.criadoPor||'—')}${e.criadoSetor ? ' ('+escapeHtml(e.criadoSetor)+')' : ''} · ${formatDateTimeBR(e.criadoEm)}</span>${revertLineageNote(e)}</td>
       <td style="max-width:150px;font-size:11.5px;">${crInfo ? escapeHtml(crInfo) : '<span style="color:var(--muted);">—</span>'}</td>
       <td style="max-width:150px;font-size:11.5px;">${natInfo ? escapeHtml(natInfo) : '<span style="color:var(--muted);">—</span>'}</td>
-      <td>${e.exportado ? `<span class="badge ok">NUMLAN ${e.numlan}</span>` : (e.liberado ? '<span class="badge ok">liberado</span>' : '<span class="badge warn">aguard. liberação</span>')}</td>
+      <td>${e.exportado ? `<span class="badge ok">NUMLAN ${e.numlan}</span>` : (e.liberado && e.liberadoHolding ? '<span class="badge ok">liberado</span>' : (e.liberado ? '<span class="badge warn">aguard. OPY Holding</span>' : '<span class="badge warn">aguard. liberação</span>'))}</td>
       <td style="width:80px;">
         <div class="row-actions">
           ${(!e.exportado && !e.liberado) ? `<button class="icon-btn" data-edit="${e.id}" title="Editar">Editar</button><button class="icon-btn" data-del="${e.id}" title="Excluir">Excluir</button>` : `<span style="color:var(--muted);font-size:11px;">${e.exportado ? 'bloqueado' : 'liberado — revogue'}</span>`}
@@ -1634,9 +1641,9 @@ function renderLotes(){
     <p>Selecione um lote para conferir os lançamentos antes de exportar.</p>
   </div>
   ${renderCompanyTabs()}
-  <div class="grid" style="grid-template-columns:260px 1fr;gap:20px;align-items:start;">
+  <div class="grid" style="grid-template-columns:260px minmax(0,1fr);gap:20px;align-items:start;">
     <div id="loteCards" style="max-height:720px;overflow-y:auto;overflow-x:hidden;padding-right:4px;">${cards}</div>
-    <div class="panel" style="display:flex;flex-direction:column;max-height:720px;">
+    <div class="panel" style="display:flex;flex-direction:column;max-height:720px;min-width:0;">
       <div class="panel-title">Lote ${escapeHtml(sel)}${nomeDoLote(sel) ? ' — '+escapeHtml(nomeDoLote(sel)) : ''} — conferência</div>
       <div class="grid grid-3" style="margin-bottom:16px;flex-shrink:0;">
         <div class="field">
@@ -1678,9 +1685,9 @@ function renderLotes(){
         <button class="btn secondary" id="btnExcluirSelecionados" style="padding:6px 14px;font-size:12.5px;color:var(--danger);">Excluir selecionados</button>
         <button class="btn secondary" id="btnLimparSelecao" style="padding:6px 14px;font-size:12.5px;">Limpar seleção</button>
       </div>` : ''}
-      <div class="tbl-scroll" style="flex:1;overflow:auto;min-height:0;">
-        <table>
-          <thead><tr><th style="width:30px;">${excluiveis.length > 0 ? `<input type="checkbox" id="chkExcluirTodos" ${todosSelecionados?'checked':''} title="Selecionar todos">` : ''}</th><th>Data</th><th>Débito</th><th>Crédito</th><th>Doc</th><th class="num">Valor</th><th>Histórico</th><th>Centro de Resultado</th><th>Natureza</th><th>Status</th><th>Ações</th></tr></thead>
+      <div class="tbl-scroll" style="flex:1;overflow:auto;min-height:0;min-width:0;">
+        <table style="width:max-content;min-width:100%;">
+          <thead><tr><th style="width:30px;">${excluiveis.length > 0 ? `<input type="checkbox" id="chkExcluirTodos" ${todosSelecionados?'checked':''} title="Selecionar todos">` : ''}</th><th>Data</th><th>Débito</th><th>Crédito</th><th>Doc</th><th class="num">Valor</th><th style="min-width:260px;">Histórico</th><th>Centro de Resultado</th><th>Natureza</th><th>Status</th><th>Ações</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -1722,7 +1729,8 @@ function excelLotesDisponiveis(){
 }
 function statusLabel(e){
   if(e.exportado) return 'Exportado';
-  if(e.liberado) return 'Liberado';
+  if(e.liberado && e.liberadoHolding) return 'Liberado';
+  if(e.liberado) return 'Aguardando Liberação OPY Holding';
   return 'Aguardando liberação';
 }
 function renderExcelExportPanel(){
@@ -1911,6 +1919,77 @@ function renderLiberacao(){
   `;
 }
 
+// ---------- Tab: Liberação OPY Holding ----------
+function renderLiberacaoHolding(){
+  if(!podeLiberarHolding()){
+    return `<div class="page-header"><h1>Liberação OPY Holding</h1></div>
+    <div class="empty-state"><h3>Acesso restrito</h3><p>Seu usuário não tem permissão para acessar a Liberação OPY Holding.</p></div>`;
+  }
+  const lotes = distinctLotes();
+  if(lotes.length === 0){
+    return `<div class="page-header"><h1>Liberação OPY Holding</h1><p>Nenhum lançamento cadastrado para ${escapeHtml(state.empresa)} ainda.</p></div>
+    ${renderCompanyTabs()}
+    <div class="empty-state"><h3>Nada por aqui</h3><p>Cadastre lançamentos na aba "Novo lançamento" primeiro.</p></div>`;
+  }
+  const sel = (state.selectedLoteLiberacaoHolding[state.empresa] && lotes.includes(state.selectedLoteLiberacaoHolding[state.empresa])) ? state.selectedLoteLiberacaoHolding[state.empresa] : lotes[0];
+
+  const cards = lotes.map(l => {
+    const entries = entriesForLote(l).filter(e => !e.exportado && e.liberado);
+    const liberados = entries.filter(e => e.liberadoHolding).length;
+    const aguardando = entries.length - liberados;
+    return `<div class="lote-card ${l===sel?'active':''}" data-lote="${escapeHtml(l)}">
+      <div class="lote-num">Lote ${escapeHtml(l)}${nomeDoLote(l) ? ' — '+escapeHtml(nomeDoLote(l)) : ''}</div>
+      <div class="lote-stats">
+        <div class="stat"><b>${liberados}</b><span>liberados</span></div>
+        <div class="stat"><b>${aguardando}</b><span>aguardando</span></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const entries = entriesForLote(sel).filter(e => !e.exportado && e.liberado);
+  const liberadosCount = entries.filter(e => e.liberadoHolding).length;
+
+  const rows = entries.map(e => {
+    return `<tr>
+      <td><input type="checkbox" class="liberar-holding-check" data-id="${e.id}" ${e.liberadoHolding ? 'checked' : ''}></td>
+      <td>${formatDateBR(e.data)}</td>
+      <td class="mono">${e.debito} → ${e.credito}</td>
+      <td class="num">${formatBRL(e.valor)}</td>
+      <td style="max-width:220px;">${escapeHtml(e.historico)}<br><span style="color:var(--muted);font-size:10.5px;">liberado por ${escapeHtml(e.liberadoPor||'—')} · ${formatDateTimeBR(e.liberadoEm)}</span></td>
+      <td>${e.liberadoHolding ? `<span class="badge ok">liberado por ${escapeHtml(e.liberadoHoldingPor||'—')}</span>` : '<span class="badge warn">aguardando</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+  <div class="page-header">
+    <h1>Liberação OPY Holding</h1>
+    <p>Segunda aprovação, exigida pela holding — só depois dela o lançamento fica disponível em "Exportar p/ Sankhya".</p>
+  </div>
+  ${renderCompanyTabs()}
+  <div class="grid" style="grid-template-columns:260px 1fr;gap:20px;align-items:start;">
+    <div id="loteCardsLiberacaoHolding">${cards}</div>
+    <div class="panel">
+      <div class="panel-title">Lote ${escapeHtml(sel)}${nomeDoLote(sel) ? ' — '+escapeHtml(nomeDoLote(sel)) : ''} &nbsp;·&nbsp; ${liberadosCount}/${entries.length} liberados</div>
+      <div class="field" style="max-width:280px;margin-bottom:14px;">
+        <label>Liberado por (OPY Holding)</label>
+        <input id="f_liberadoHoldingPor" type="text" placeholder="Seu nome" value="${escapeHtml(state.meuNome||'')}">
+      </div>
+      <div class="btn-row" style="margin-top:0;margin-bottom:16px;">
+        <button class="btn" id="btnLiberarHoldingLote" ${entries.length===0?'disabled':''}>Liberar selecionados</button>
+        <button class="btn secondary" id="btnRevogarHoldingLote" ${liberadosCount===0?'disabled':''}>Revogar selecionados</button>
+      </div>
+      ${entries.length === 0 ? '<p class="small-note">Nenhum lançamento já liberado (1ª etapa) aguardando aqui. Verifique a aba "Liberação".</p>' : `
+      <div class="tbl-scroll">
+        <table>
+          <thead><tr><th><input type="checkbox" id="checkAllLiberacaoHolding" checked></th><th>Data</th><th>Débito → Crédito</th><th class="num">Valor</th><th>Histórico</th><th>Status</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`}
+    </div>
+  </div>
+  `;
+}
+
 // ---------- Tab: Exportar ----------
 function buildLine(entry, numlan){
   const deb = CONTAS_BY_RED[entry.debito];
@@ -1951,8 +2030,9 @@ function renderExportar(){
     <div class="empty-state"><h3>Nada para exportar</h3><p>Cadastre lançamentos para ${escapeHtml(state.empresa)} primeiro.</p></div>`;
   }
   const sel = (state.selectedLoteView[state.empresa] && lotes.includes(state.selectedLoteView[state.empresa])) ? state.selectedLoteView[state.empresa] : lotes[0];
-  const pendentes = entriesForLote(sel).filter(e => !e.exportado && e.liberado);
+  const pendentes = entriesForLote(sel).filter(e => !e.exportado && e.liberado && e.liberadoHolding);
   const aguardandoLiberacao = entriesForLote(sel).filter(e => !e.exportado && !e.liberado);
+  const aguardandoHolding = entriesForLote(sel).filter(e => !e.exportado && e.liberado && !e.liberadoHolding);
   const jaExportados = entriesForLote(sel).filter(e => e.exportado);
   const counterKey = state.empresa + '::' + sel;
   const counter = state.loteCounters[counterKey];
@@ -1982,14 +2062,16 @@ function renderExportar(){
       </div>
       <div class="kv"><span>Liberados p/ exportar</span><b>${pendentes.length}</b></div>
       <div class="kv"><span>Aguardando liberação</span><b>${aguardandoLiberacao.length}</b></div>
+      <div class="kv"><span>Aguardando Liberação OPY Holding</span><b>${aguardandoHolding.length}</b></div>
       <div class="kv"><span>Já exportados anteriormente</span><b>${jaExportados.length}</b></div>
       <div class="kv"><span>Total (liberados)</span><b>R$ ${formatBRL(pendentes.reduce((s,e)=>s+e.valor,0))}</b></div>
       <div class="btn-row">
         <button class="btn" id="btnGerarArquivo" ${pendentes.length===0?'disabled':''}>Baixar Lote${escapeHtml(sel)}.txt</button>
         <button class="btn secondary" id="btnCopiarArquivo" ${pendentes.length===0?'disabled':''}>Copiar texto</button>
       </div>
-      ${pendentes.length===0 && aguardandoLiberacao.length===0 ? '<p class="small-note">Todos os lançamentos deste lote já foram exportados.</p>' : ''}
+      ${pendentes.length===0 && aguardandoLiberacao.length===0 && aguardandoHolding.length===0 ? '<p class="small-note">Todos os lançamentos deste lote já foram exportados.</p>' : ''}
       ${aguardandoLiberacao.length>0 ? `<p class="small-note">${aguardandoLiberacao.length} lançamento(s) ainda aguardando liberação — vá em "Liberação" para aprová-los antes de exportar.</p>` : ''}
+      ${aguardandoHolding.length>0 ? `<p class="small-note">${aguardandoHolding.length} lançamento(s) já liberado(s), mas aguardando a Liberação OPY Holding antes de exportar.</p>` : ''}
       ${jaExportados.length>0 ? `
       <div class="divider"></div>
       <div class="panel-title">Já exportado (${jaExportados.length} linha${jaExportados.length===1?'':'s'})</div>
@@ -2700,7 +2782,7 @@ function afterRender(){
         if(idx < 0) return;
         const e = state.lancamentos[idx];
         if(!confirm(`Desbloquear este lançamento (NUMLAN ${e.numlan}, já exportado ao Sankhya)?\n\nEle volta a ficar editável e sai da lista de exportados — se for exportado de novo, vai receber um NUMLAN novo. Use só se o arquivo enviado ao Sankhya precisar ser corrigido.`)) return;
-        state.lancamentos[idx] = {...e, exportado: false, numlan: null, liberado: false, liberadoPor: null, liberadoEm: null};
+        state.lancamentos[idx] = {...e, exportado: false, numlan: null, liberado: false, liberadoPor: null, liberadoEm: null, liberadoHolding: false, liberadoHoldingPor: null, liberadoHoldingEm: null};
         await saveLancamentos();
         showToast('Lançamento desbloqueado — já pode editar.');
         render();
@@ -2764,10 +2846,63 @@ function afterRender(){
           state.lancamentos[idx].liberado = false;
           state.lancamentos[idx].liberadoPor = null;
           state.lancamentos[idx].liberadoEm = null;
+          state.lancamentos[idx].liberadoHolding = false;
+          state.lancamentos[idx].liberadoHoldingPor = null;
+          state.lancamentos[idx].liberadoHoldingEm = null;
         }
       });
       await saveLancamentos();
       showToast(ids.length + ' liberação(ões) revogada(s).');
+      render();
+    });
+  }
+
+  if(state.tab === 'liberacaoHolding'){
+    if(!podeLiberarHolding()) return;
+    document.querySelectorAll('#loteCardsLiberacaoHolding .lote-card').forEach(card => {
+      card.addEventListener('click', () => {
+        state.selectedLoteLiberacaoHolding[state.empresa] = card.dataset.lote;
+        render();
+      });
+    });
+    const checkAllH = document.getElementById('checkAllLiberacaoHolding');
+    if(checkAllH) checkAllH.addEventListener('change', () => {
+      document.querySelectorAll('.liberar-holding-check').forEach(c => c.checked = checkAllH.checked);
+    });
+    const btnLiberarH = document.getElementById('btnLiberarHoldingLote');
+    if(btnLiberarH) btnLiberarH.addEventListener('click', async () => {
+      if(!podeLiberarHolding()){ showToast('Seu usuário não tem permissão para a Liberação OPY Holding.'); return; }
+      const nome = document.getElementById('f_liberadoHoldingPor').value.trim();
+      if(!nome){ showToast('Informe quem está liberando.'); return; }
+      const ids = Array.from(document.querySelectorAll('.liberar-holding-check:checked')).map(c => c.dataset.id);
+      if(ids.length === 0){ showToast('Selecione ao menos um lançamento.'); return; }
+      ids.forEach(id => {
+        const idx = state.lancamentos.findIndex(l => l.id === id);
+        if(idx >= 0){
+          state.lancamentos[idx].liberadoHolding = true;
+          state.lancamentos[idx].liberadoHoldingPor = nome;
+          state.lancamentos[idx].liberadoHoldingEm = Date.now();
+        }
+      });
+      await saveLancamentos();
+      showToast(ids.length + ' lançamento(s) liberado(s) (OPY Holding).');
+      render();
+    });
+    const btnRevogarH = document.getElementById('btnRevogarHoldingLote');
+    if(btnRevogarH) btnRevogarH.addEventListener('click', async () => {
+      if(!podeLiberarHolding()){ showToast('Seu usuário não tem permissão para a Liberação OPY Holding.'); return; }
+      const ids = Array.from(document.querySelectorAll('.liberar-holding-check:checked')).map(c => c.dataset.id);
+      if(ids.length === 0){ showToast('Selecione ao menos um lançamento.'); return; }
+      ids.forEach(id => {
+        const idx = state.lancamentos.findIndex(l => l.id === id);
+        if(idx >= 0){
+          state.lancamentos[idx].liberadoHolding = false;
+          state.lancamentos[idx].liberadoHoldingPor = null;
+          state.lancamentos[idx].liberadoHoldingEm = null;
+        }
+      });
+      await saveLancamentos();
+      showToast(ids.length + ' liberação(ões) OPY Holding revogada(s).');
       render();
     });
   }
@@ -2784,7 +2919,7 @@ function afterRender(){
       const counterKey = state.empresa + '::' + sel;
       const startInput = document.getElementById('f_numlanStart');
       const start = parseInt(startInput.value) || 1;
-      const pendentes = entriesForLote(sel).filter(e => !e.exportado && e.liberado);
+      const pendentes = entriesForLote(sel).filter(e => !e.exportado && e.liberado && e.liberadoHolding);
       if(pendentes.length === 0) return;
       const lines = pendentes.map((e,i) => buildLine(e, start+i));
       const content = lines.join('\r\n') + '\r\n';
@@ -2844,6 +2979,7 @@ document.getElementById('meuSetorInput').addEventListener('input', (e) => {
 const PERMISSOES = {
   liberar: ['thiago.fernandes@rdfconcept.com.br', 'cleoson.pena@opyhealth.com.br'],
   revogarLiberacao: ['thiago.fernandes@rdfconcept.com.br'],
+  liberarHolding: ['thiago.fernandes@rdfconcept.com.br', 'milena.ribeiro@opyhealth.com.br', 'diogo.tsuda@opyhealth.com.br', 'beatriz.souza@opyhealth.com.br'],
   exportar: ['thiago.fernandes@rdfconcept.com.br', 'ana.bezerra@rdfconcept.com.br'],
   desbloquear: ['thiago.fernandes@rdfconcept.com.br']
 };
@@ -2864,6 +3000,7 @@ function empresasPermitidas(){
 }
 function podeLiberar(){ return PERMISSOES.liberar.includes(meuEmailLogado()); }
 function podeRevogarLiberacao(){ return PERMISSOES.revogarLiberacao.includes(meuEmailLogado()); }
+function podeLiberarHolding(){ return PERMISSOES.liberarHolding.includes(meuEmailLogado()); }
 function podeExportar(){ return PERMISSOES.exportar.includes(meuEmailLogado()); }
 function podeDesbloquear(){ return PERMISSOES.desbloquear.includes(meuEmailLogado()); }
 function nomeDoEmailLogado(){
@@ -2876,6 +3013,7 @@ async function startApp(){
   document.getElementById('app').style.display = '';
   document.getElementById('loggedAsEmail').textContent = fbAuth.currentUser ? fbAuth.currentUser.email : '';
   document.getElementById('navExportar').style.display = podeExportar() ? '' : 'none';
+  document.getElementById('navLiberacaoHolding').style.display = podeLiberarHolding() ? '' : 'none';
   await loadState();
   if(!empresasPermitidas().includes(state.empresa)) state.empresa = empresasPermitidas()[0];
   state.meuNome = nomeDoEmailLogado();
