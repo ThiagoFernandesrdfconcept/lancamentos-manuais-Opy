@@ -388,7 +388,8 @@ function onmFase2AutoRed(natRed){
   return null;
 }
 function lotesDaEmpresa(){
-  const base = LOTES_BY_EMPRESA_RAW[state.empresa] || [];
+  const ocultos = new Set(state.lotesOcultos.filter(o => o.empresa === state.empresa).map(o => String(o.lote)));
+  const base = (LOTES_BY_EMPRESA_RAW[state.empresa] || []).filter(l => !ocultos.has(String(l[0])));
   const extras = state.lotesExtras.filter(l => l.empresa === state.empresa).map(l => [l.lote, l.nome]);
   return [...base, ...extras];
 }
@@ -415,6 +416,7 @@ let state = {
   modelos: [],
   contasExtras: [],
   lotesExtras: [],
+  lotesOcultos: [],
   criandoLote: false,
   criandoConta: false,
   modeloDraft: [],
@@ -460,6 +462,10 @@ async function loadState(){
     const r = await window.storage.get('lotes-extras', true);
     state.lotesExtras = r ? JSON.parse(r.value) : [];
   }catch(e){ state.lotesExtras = []; }
+  try{
+    const r = await window.storage.get('lotes-ocultos', true);
+    state.lotesOcultos = r ? JSON.parse(r.value) : [];
+  }catch(e){ state.lotesOcultos = []; }
   try{
     const r = await window.storage.get('meu-nome', false);
     state.meuNome = r ? r.value : '';
@@ -677,6 +683,13 @@ async function saveLotesExtras(){
   }
   catch(e){ showToast('Erro ao salvar o lote.'); }
 }
+async function saveLotesOcultos(){
+  try{
+    updateSyncBaseline();
+    await window.storage.set('lotes-ocultos', JSON.stringify(state.lotesOcultos), true);
+  }
+  catch(e){ showToast('Erro ao salvar o lote.'); }
+}
 
 // ---------- Firebase (banco de dados + login) ----------
 const firebaseConfig = {
@@ -783,6 +796,7 @@ function setupRealtimeSync(){
       else if(doc.id === 'modelos'){ state.modelos = val || []; changed = true; }
       else if(doc.id === 'contas-extras'){ state.contasExtras = val || []; mergeContasExtras(); changed = true; }
       else if(doc.id === 'lotes-extras'){ state.lotesExtras = val || []; changed = true; }
+      else if(doc.id === 'lotes-ocultos'){ state.lotesOcultos = val || []; changed = true; }
     });
     if(!__syncReady){ __syncReady = true; return; }
     if(!changed) return;
@@ -1779,19 +1793,27 @@ function renderGerenciarLotes(){
     return `<div class="page-header"><h1>Gerenciar Lotes</h1></div>
     <div class="empty-state"><h3>Acesso restrito</h3><p>Seu usuário não tem permissão para gerenciar lotes.</p></div>`;
   }
-  const base = LOTES_BY_EMPRESA_RAW[state.empresa] || [];
+  const ocultosSet = new Set(state.lotesOcultos.filter(o => o.empresa === state.empresa).map(o => String(o.lote)));
+  const base = (LOTES_BY_EMPRESA_RAW[state.empresa] || []).filter(l => !ocultosSet.has(String(l[0])));
+  const ocultados = (LOTES_BY_EMPRESA_RAW[state.empresa] || []).filter(l => ocultosSet.has(String(l[0])));
   const extras = state.lotesExtras.filter(l => l.empresa === state.empresa);
   const rowsBase = base.map(l => `<tr>
     <td class="mono">${escapeHtml(l[0])}</td>
     <td>${escapeHtml(l[1])}</td>
     <td><span class="badge muted">padrão</span></td>
-    <td></td>
+    <td><button class="icon-btn" data-hidelote="${escapeHtml(l[0])}" style="color:var(--danger);">Excluir</button></td>
   </tr>`).join('');
   const rowsExtras = extras.map(l => `<tr>
     <td class="mono">${escapeHtml(l.lote)}</td>
     <td>${escapeHtml(l.nome)}</td>
     <td><span class="badge ok">criado por você</span></td>
     <td><button class="icon-btn" data-dellote="${l.id}" style="color:var(--danger);">Excluir</button></td>
+  </tr>`).join('');
+  const rowsOcultados = ocultados.map(l => `<tr>
+    <td class="mono">${escapeHtml(l[0])}</td>
+    <td>${escapeHtml(l[1])}</td>
+    <td><span class="badge muted">excluído</span></td>
+    <td><button class="icon-btn" data-restaurarlote="${escapeHtml(l[0])}">Restaurar</button></td>
   </tr>`).join('');
   return `
   <div class="page-header">
@@ -1827,7 +1849,16 @@ function renderGerenciarLotes(){
         </table>
       </div>
       ${(base.length + extras.length) === 0 ? '<p class="small-note">Nenhum lote cadastrado ainda para esta empresa.</p>' : ''}
-      <p class="small-note" style="margin-top:12px;">Lotes "padrão" fazem parte da configuração original do app — para renomear ou remover um deles, me avise. Lotes "criados por você" podem ser excluídos aqui a qualquer momento.</p>
+      <p class="small-note" style="margin-top:12px;">Excluir um lote "padrão" apenas some com ele da lista desta empresa (pode ser restaurado); lançamentos já feitos com ele continuam existindo.</p>
+      ${ocultados.length > 0 ? `
+      <div class="divider"></div>
+      <div class="panel-title" style="font-size:13px;">Lotes padrão excluídos (${ocultados.length})</div>
+      <div class="tbl-scroll">
+        <table>
+          <thead><tr><th>Lote</th><th>Nome</th><th>Status</th><th></th></tr></thead>
+          <tbody>${rowsOcultados}</tbody>
+        </table>
+      </div>` : ''}
     `}
   </div>
   `;
@@ -3069,6 +3100,23 @@ function afterRender(){
         state.lotesExtras = state.lotesExtras.filter(l => l.id !== btn.dataset.dellote);
         await saveLotesExtras();
         showToast('Lote excluído.');
+        render();
+      });
+    });
+    document.querySelectorAll('[data-hidelote]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if(!confirm('Excluir este lote padrão desta empresa? Lançamentos já feitos com ele continuam existindo — você pode restaurar depois se precisar.')) return;
+        state.lotesOcultos.push({ empresa: state.empresa, lote: btn.dataset.hidelote });
+        await saveLotesOcultos();
+        showToast('Lote excluído.');
+        render();
+      });
+    });
+    document.querySelectorAll('[data-restaurarlote]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        state.lotesOcultos = state.lotesOcultos.filter(o => !(o.empresa === state.empresa && String(o.lote) === btn.dataset.restaurarlote));
+        await saveLotesOcultos();
+        showToast('Lote restaurado.');
         render();
       });
     });
