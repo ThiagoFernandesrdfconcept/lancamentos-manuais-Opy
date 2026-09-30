@@ -2028,10 +2028,55 @@ function gerarExcelLancamentos(){
 }
 
 // ---------- Tab: Liberação ----------
+function resumoLiberacao(){
+  const permitidas = empresasPermitidas();
+  const porEmpresa = permitidas.map(emp => {
+    const entries = state.lancamentos.filter(e => e.empresa === emp && !e.exportado);
+    const aguardando = entries.filter(e => !e.liberado);
+    const liberados = entries.filter(e => e.liberado);
+    return { empresa: emp, aguardando: aguardando.length, aguardandoValor: aguardando.reduce((s,e)=>s+e.valor,0), liberados: liberados.length, liberadosValor: liberados.reduce((s,e)=>s+e.valor,0) };
+  }).filter(r => r.aguardando > 0 || r.liberados > 0);
+  return {
+    porEmpresa,
+    totalAguardando: porEmpresa.reduce((s,r)=>s+r.aguardando,0),
+    totalAguardandoValor: porEmpresa.reduce((s,r)=>s+r.aguardandoValor,0),
+    totalLiberados: porEmpresa.reduce((s,r)=>s+r.liberados,0),
+    totalLiberadosValor: porEmpresa.reduce((s,r)=>s+r.liberadosValor,0)
+  };
+}
+function renderResumoLiberacao(){
+  const r = resumoLiberacao();
+  return `
+  <div class="panel" style="margin-bottom:18px;">
+    <div class="panel-title">Resumo — todas as suas empresas</div>
+    <div class="grid grid-2" style="margin-bottom:${r.porEmpresa.length?'14px':'0'};">
+      <div class="field">
+        <label>Aguardando liberação</label>
+        <div class="mono" style="font-size:18px;font-weight:600;">${r.totalAguardando} <span style="font-weight:400;font-family:'Inter';color:var(--muted);font-size:12.5px;">— R$ ${formatBRL(r.totalAguardandoValor)}</span></div>
+      </div>
+      <div class="field">
+        <label>Já liberados (aguardando próxima etapa)</label>
+        <div class="mono" style="font-size:18px;font-weight:600;color:var(--accent-dark);">${r.totalLiberados} <span style="font-weight:400;font-family:'Inter';color:var(--muted);font-size:12.5px;">— R$ ${formatBRL(r.totalLiberadosValor)}</span></div>
+      </div>
+    </div>
+    ${r.porEmpresa.length > 0 ? `
+    <div class="tbl-scroll">
+      <table>
+        <thead><tr><th>Empresa</th><th class="num">Aguardando</th><th class="num">Liberados</th></tr></thead>
+        <tbody>${r.porEmpresa.map(x => `<tr>
+          <td>${escapeHtml(x.empresa)}</td>
+          <td class="num">${x.aguardando}${x.aguardando>0?` <span style="color:var(--muted);font-size:11px;">(R$ ${formatBRL(x.aguardandoValor)})</span>`:''}</td>
+          <td class="num">${x.liberados}${x.liberados>0?` <span style="color:var(--muted);font-size:11px;">(R$ ${formatBRL(x.liberadosValor)})</span>`:''}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>` : '<p class="small-note">Nenhum lançamento pendente em nenhuma das suas empresas.</p>'}
+  </div>`;
+}
 function renderLiberacao(){
   const lotes = distinctLotes();
   if(lotes.length === 0){
     return `<div class="page-header"><h1>Liberação</h1><p>Nenhum lançamento cadastrado para ${escapeHtml(state.empresa)} ainda.</p></div>
+    ${renderResumoLiberacao()}
     ${renderCompanyTabs()}
     <div class="empty-state"><h3>Nada por aqui</h3><p>Cadastre lançamentos na aba "Novo lançamento" primeiro.</p></div>`;
   }
@@ -2069,6 +2114,7 @@ function renderLiberacao(){
     <h1>Liberação</h1>
     <p>Só lançamentos liberados por um superior entram na exportação para o Sankhya.</p>
   </div>
+  ${renderResumoLiberacao()}
   ${renderCompanyTabs()}
   <div class="grid" style="grid-template-columns:260px 1fr;gap:20px;align-items:start;">
     <div id="loteCardsLiberacao">${cards}</div>
@@ -2096,6 +2142,50 @@ function renderLiberacao(){
 }
 
 // ---------- Tab: Liberação OPY Holding ----------
+function resumoLiberacaoHolding(){
+  const permitidas = empresasPermitidas();
+  const porEmpresa = permitidas.map(emp => {
+    const entries = state.lancamentos.filter(e => e.empresa === emp && !e.exportado && e.liberado);
+    const aguardando = entries.filter(e => !e.liberadoHolding);
+    const liberados = entries.filter(e => e.liberadoHolding);
+    return { empresa: emp, aguardando: aguardando.length, aguardandoValor: aguardando.reduce((s,e)=>s+e.valor,0), liberados: liberados.length, liberadosValor: liberados.reduce((s,e)=>s+e.valor,0) };
+  }).filter(r => r.aguardando > 0 || r.liberados > 0);
+  return {
+    porEmpresa,
+    totalAguardando: porEmpresa.reduce((s,r)=>s+r.aguardando,0),
+    totalAguardandoValor: porEmpresa.reduce((s,r)=>s+r.aguardandoValor,0),
+    totalLiberados: porEmpresa.reduce((s,r)=>s+r.liberados,0),
+    totalLiberadosValor: porEmpresa.reduce((s,r)=>s+r.liberadosValor,0)
+  };
+}
+function renderResumoLiberacaoHolding(){
+  const r = resumoLiberacaoHolding();
+  return `
+  <div class="panel" style="margin-bottom:18px;">
+    <div class="panel-title">Resumo — todas as suas empresas</div>
+    <div class="grid grid-2" style="margin-bottom:${r.porEmpresa.length?'14px':'0'};">
+      <div class="field">
+        <label>Aguardando Liberação OPY Holding</label>
+        <div class="mono" style="font-size:18px;font-weight:600;">${r.totalAguardando} <span style="font-weight:400;font-family:'Inter';color:var(--muted);font-size:12.5px;">— R$ ${formatBRL(r.totalAguardandoValor)}</span></div>
+      </div>
+      <div class="field">
+        <label>Já liberados (prontos para exportar)</label>
+        <div class="mono" style="font-size:18px;font-weight:600;color:var(--accent-dark);">${r.totalLiberados} <span style="font-weight:400;font-family:'Inter';color:var(--muted);font-size:12.5px;">— R$ ${formatBRL(r.totalLiberadosValor)}</span></div>
+      </div>
+    </div>
+    ${r.porEmpresa.length > 0 ? `
+    <div class="tbl-scroll">
+      <table>
+        <thead><tr><th>Empresa</th><th class="num">Aguardando</th><th class="num">Liberados</th></tr></thead>
+        <tbody>${r.porEmpresa.map(x => `<tr>
+          <td>${escapeHtml(x.empresa)}</td>
+          <td class="num">${x.aguardando}${x.aguardando>0?` <span style="color:var(--muted);font-size:11px;">(R$ ${formatBRL(x.aguardandoValor)})</span>`:''}</td>
+          <td class="num">${x.liberados}${x.liberados>0?` <span style="color:var(--muted);font-size:11px;">(R$ ${formatBRL(x.liberadosValor)})</span>`:''}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>` : '<p class="small-note">Nenhum lançamento pendente em nenhuma das suas empresas.</p>'}
+  </div>`;
+}
 function renderLiberacaoHolding(){
   if(!podeLiberarHolding()){
     return `<div class="page-header"><h1>Liberação OPY Holding</h1></div>
@@ -2104,6 +2194,7 @@ function renderLiberacaoHolding(){
   const lotes = distinctLotes();
   if(lotes.length === 0){
     return `<div class="page-header"><h1>Liberação OPY Holding</h1><p>Nenhum lançamento cadastrado para ${escapeHtml(state.empresa)} ainda.</p></div>
+    ${renderResumoLiberacaoHolding()}
     ${renderCompanyTabs()}
     <div class="empty-state"><h3>Nada por aqui</h3><p>Cadastre lançamentos na aba "Novo lançamento" primeiro.</p></div>`;
   }
@@ -2141,6 +2232,7 @@ function renderLiberacaoHolding(){
     <h1>Liberação OPY Holding</h1>
     <p>Segunda aprovação, exigida pela holding — só depois dela o lançamento fica disponível em "Exportar p/ Sankhya".</p>
   </div>
+  ${renderResumoLiberacaoHolding()}
   ${renderCompanyTabs()}
   <div class="grid" style="grid-template-columns:260px 1fr;gap:20px;align-items:start;">
     <div id="loteCardsLiberacaoHolding">${cards}</div>
