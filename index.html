@@ -1933,7 +1933,7 @@ function statusLabel(e){
   if(e.exportado) return 'Exportado';
   if(e.liberado && e.liberadoHolding) return 'Liberado';
   if(e.liberado) return 'Aguardando Liberação OPY Holding';
-  return 'Aguardando liberação';
+  return 'Aguardando Liberação Ativos';
 }
 function renderExcelExportPanel(){
   const f = state.excelFiltro;
@@ -1952,7 +1952,7 @@ function renderExcelExportPanel(){
         <select id="excel_status">
           <option value="todos" ${f.status==='todos'?'selected':''}>Todos</option>
           <option value="liberados" ${f.status==='liberados'?'selected':''}>Liberados (não exportados)</option>
-          <option value="aguardando" ${f.status==='aguardando'?'selected':''}>Aguardando liberação</option>
+          <option value="aguardando" ${f.status==='aguardando'?'selected':''}>Aguardando Liberação Ativos</option>
           <option value="exportados" ${f.status==='exportados'?'selected':''}>Já exportados</option>
         </select>
       </div>
@@ -2077,7 +2077,7 @@ function renderResumoLiberacao(){
     <div class="panel-title">Resumo — todas as suas empresas</div>
     <div class="grid grid-2" style="margin-bottom:${r.porEmpresa.length?'14px':'0'};">
       <div class="field">
-        <label>Aguardando liberação</label>
+        <label>Aguardando Liberação Ativos</label>
         <div class="mono" style="font-size:18px;font-weight:600;">${r.totalAguardando} <span style="font-weight:400;font-family:'Inter';color:var(--muted);font-size:12.5px;">— R$ ${formatBRL(r.totalAguardandoValor)}</span></div>
       </div>
       <div class="field">
@@ -2355,7 +2355,7 @@ function renderExportar(){
         <div class="hint">${counter ? 'Definido automaticamente a partir do último arquivo gerado para este lote.' : 'Primeira exportação deste lote — confirme o número inicial combinado com o Sankhya (normalmente o próximo disponível).'}</div>
       </div>
       <div class="kv"><span>Liberados p/ exportar</span><b>${pendentes.length}</b></div>
-      <div class="kv"><span>Aguardando liberação</span><b>${aguardandoLiberacao.length}</b></div>
+      <div class="kv"><span>Aguardando Liberação Ativos</span><b>${aguardandoLiberacao.length}</b></div>
       <div class="kv"><span>Aguardando Liberação OPY Holding</span><b>${aguardandoHolding.length}</b></div>
       <div class="kv"><span>Já exportados anteriormente</span><b>${jaExportados.length}</b></div>
       <div class="kv"><span>Total (liberados)</span><b>R$ ${formatBRL(pendentes.reduce((s,e)=>s+e.valor,0))}</b></div>
