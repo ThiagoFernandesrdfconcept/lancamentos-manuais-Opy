@@ -305,6 +305,7 @@ td.num,th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
   <aside class="sidebar">
     <div class="brand">Lançamentos</div>
     <div class="brand-sub">Contabilização manual · Sankhya</div>
+    <button class="navbtn" id="navResumoLiberacao" data-tab="resumoLiberacao"><span class="dot"></span>Resumo liberação</button>
     <button class="navbtn" data-tab="lancar"><span class="dot"></span>Novo lançamento</button>
     <button class="navbtn" data-tab="plano"><span class="dot"></span>Plano de Contas</button>
     <button class="navbtn" data-tab="centros"><span class="dot"></span>Centro de Resultado</button>
@@ -1167,6 +1168,10 @@ function setTab(tab){
     showToast('Seu usuário não tem acesso ao gerenciamento de lotes.');
     tab = state.tab === 'gerenciarLotes' ? 'lancar' : state.tab;
   }
+  if(tab === 'resumoLiberacao' && !podeLiberar() && !podeLiberarHolding()){
+    showToast('Seu usuário não tem acesso ao resumo de liberação.');
+    tab = state.tab === 'resumoLiberacao' ? 'lancar' : state.tab;
+  }
   state.tab = tab;
   state.editingId = null;
   state.usingModeloId = null;
@@ -1177,7 +1182,8 @@ function setTab(tab){
 
 function render(){
   const main = document.getElementById('main');
-  if(state.tab === 'lancar') main.innerHTML = renderLancar();
+  if(state.tab === 'resumoLiberacao') main.innerHTML = renderResumoLiberacaoTab();
+  else if(state.tab === 'lancar') main.innerHTML = renderLancar();
   else if(state.tab === 'plano') main.innerHTML = renderPlanoContas();
   else if(state.tab === 'centros') main.innerHTML = renderCentroResultadoTab();
   else if(state.tab === 'naturezas') main.innerHTML = renderNaturezaTab();
@@ -1189,13 +1195,27 @@ function render(){
   afterRender();
 }
 
-// ---------- Tab: Lançar ----------
+// ---------- Tab: Resumo liberação ----------
 function renderResumoLiberacoes(){
   const partes = [];
   if(podeLiberar()) partes.push(renderResumoLiberacao());
   if(podeLiberarHolding()) partes.push(renderResumoLiberacaoHolding());
   return partes.join('');
 }
+function renderResumoLiberacaoTab(){
+  if(!podeLiberar() && !podeLiberarHolding()){
+    return `<div class="page-header"><h1>Resumo liberação</h1></div>
+    <div class="empty-state"><h3>Acesso restrito</h3><p>Seu usuário não tem permissão para acessar o resumo de liberação.</p></div>`;
+  }
+  return `
+  <div class="page-header">
+    <h1>Resumo liberação</h1>
+    <p>Panorama de lançamentos aguardando ou já liberados, em todas as empresas às quais o seu usuário tem acesso.</p>
+  </div>
+  ${renderResumoLiberacoes()}
+  `;
+}
+// ---------- Tab: Lançar ----------
 function renderLancar(){
   const editing = state.editingId ? state.lancamentos.find(l => l.id === state.editingId) : null;
   const revertOriginal = (!editing && state.revertendoId) ? state.lancamentos.find(l => l.id === state.revertendoId) : null;
@@ -1218,7 +1238,6 @@ function renderLancar(){
   ${revertOriginal ? `<div class="panel" style="background:var(--warn-soft);border-color:transparent;margin-bottom:16px;padding:12px 16px;">
     <div style="font-size:12.5px;color:var(--ink);"><b>Revertendo:</b> ${escapeHtml(revertOriginal.historico)} — Lote ${escapeHtml(revertOriginal.lote)}${nomeDoLote(revertOriginal.lote) ? ' ('+escapeHtml(nomeDoLote(revertOriginal.lote))+')' : ''}, lançado em ${formatDateBR(revertOriginal.data)} por ${escapeHtml(revertOriginal.criadoPor||'—')}</div>
   </div>` : ''}
-  ${(!editing && !revertOriginal) ? renderResumoLiberacoes() : ''}
   ${renderCompanyTabs()}
   <div class="two-col">
     <div class="panel">
@@ -3344,7 +3363,7 @@ document.getElementById('meuSetorInput').addEventListener('input', (e) => {
 });
 
 const PERMISSOES = {
-  liberar: ['thiago.fernandes@rdfconcept.com.br', 'cleoson.pena@opyhealth.com.br'],
+  liberar: ['thiago.fernandes@rdfconcept.com.br', 'cleoson.pena@opyhealth.com.br', 'gabrielle.cardoso@opyhealth.com.br', 'paula.martins@opyhealth.com.br'],
   revogarLiberacao: ['thiago.fernandes@rdfconcept.com.br'],
   liberarHolding: ['thiago.fernandes@rdfconcept.com.br', 'milena.ribeiro@opyhealth.com.br', 'diogo.tsuda@opyhealth.com.br', 'beatriz.souza@opyhealth.com.br'],
   exportar: ['thiago.fernandes@rdfconcept.com.br', 'ana.bezerra@rdfconcept.com.br'],
@@ -3364,16 +3383,22 @@ const EMPRESAS_RESTRITAS = {
   'paula.martins@opyhealth.com.br': ['OME'],
 };
 function meuEmailLogado(){ return (fbAuth.currentUser && fbAuth.currentUser.email) ? fbAuth.currentUser.email.toLowerCase() : ''; }
+// Administradores: acesso total e automático a todas as permissões do
+// sistema (atuais e futuras), sem precisar ser cadastrado em cada lista de
+// PERMISSOES nem sofrer restrição de EMPRESAS_RESTRITAS.
+const ADMINS = ['thiago.fernandes@rdfconcept.com.br'];
+function souAdmin(){ return ADMINS.includes(meuEmailLogado()); }
 function empresasPermitidas(){
+  if(souAdmin()) return EMPRESAS;
   const restricao = EMPRESAS_RESTRITAS[meuEmailLogado()];
   return restricao ? EMPRESAS.filter(e => restricao.includes(e)) : EMPRESAS;
 }
-function podeLiberar(){ return PERMISSOES.liberar.includes(meuEmailLogado()); }
-function podeRevogarLiberacao(){ return PERMISSOES.revogarLiberacao.includes(meuEmailLogado()); }
-function podeLiberarHolding(){ return PERMISSOES.liberarHolding.includes(meuEmailLogado()); }
-function podeGerenciarLotes(){ return PERMISSOES.gerenciarLotes.includes(meuEmailLogado()); }
-function podeExportar(){ return PERMISSOES.exportar.includes(meuEmailLogado()); }
-function podeDesbloquear(){ return PERMISSOES.desbloquear.includes(meuEmailLogado()); }
+function podeLiberar(){ return souAdmin() || PERMISSOES.liberar.includes(meuEmailLogado()); }
+function podeRevogarLiberacao(){ return souAdmin() || PERMISSOES.revogarLiberacao.includes(meuEmailLogado()); }
+function podeLiberarHolding(){ return souAdmin() || PERMISSOES.liberarHolding.includes(meuEmailLogado()); }
+function podeGerenciarLotes(){ return souAdmin() || PERMISSOES.gerenciarLotes.includes(meuEmailLogado()); }
+function podeExportar(){ return souAdmin() || PERMISSOES.exportar.includes(meuEmailLogado()); }
+function podeDesbloquear(){ return souAdmin() || PERMISSOES.desbloquear.includes(meuEmailLogado()); }
 function nomeDoEmailLogado(){
   if(!fbAuth.currentUser || !fbAuth.currentUser.email) return '';
   const local = fbAuth.currentUser.email.split('@')[0];
@@ -3386,6 +3411,7 @@ async function startApp(){
   document.getElementById('navExportar').style.display = podeExportar() ? '' : 'none';
   document.getElementById('navLiberacaoHolding').style.display = podeLiberarHolding() ? '' : 'none';
   document.getElementById('navGerenciarLotes').style.display = podeGerenciarLotes() ? '' : 'none';
+  document.getElementById('navResumoLiberacao').style.display = (podeLiberar() || podeLiberarHolding()) ? '' : 'none';
   await loadState();
   if(!empresasPermitidas().includes(state.empresa)) state.empresa = empresasPermitidas()[0];
   state.meuNome = nomeDoEmailLogado();
