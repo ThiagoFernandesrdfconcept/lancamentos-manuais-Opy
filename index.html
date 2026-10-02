@@ -510,11 +510,31 @@ function formatMesAno(dataStr){
   if(parts.length < 2) return '';
   return parts[1] + '/' + parts[0];
 }
+const NOMES_MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 function aplicarTemplateHistorico(template, dataStr){
   if(!template) return template;
-  const mesAno = formatMesAno(dataStr);
-  if(!mesAno) return template;
-  return template.split('{MM/AAAA}').join(mesAno);
+  const partes = (dataStr||'').split('-'); // yyyy-mm-dd
+  if(partes.length < 2) return template;
+  const ano = partes[0];
+  const mesNum = partes[1];
+  const idxMes = parseInt(mesNum, 10) - 1;
+  if(isNaN(idxMes) || idxMes < 0 || idxMes > 11) return template;
+  const nomeMes = NOMES_MESES[idxMes];
+  let out = template;
+  // Placeholder explícito {MM/AAAA}, usado nos modelos mais antigos.
+  out = out.split('{MM/AAAA}').join(mesNum + '/' + ano);
+  // Datas numéricas já escritas no histórico (ex: "08/2026", "08-2026") — atualiza para o mês/ano do lançamento.
+  out = out.replace(/\b(0[1-9]|1[0-2])([\/\-])(\d{4})\b/g, (m, mm, sep) => mesNum + sep + ano);
+  // Nome do mês por extenso + ano (ex: "agosto/2026", "AGOSTO 2026", "Agosto/2026") — preserva a caixa original.
+  const reMes = new RegExp('\\b(' + NOMES_MESES.join('|') + ')([\\/\\s])(\\d{4})\\b', 'gi');
+  out = out.replace(reMes, (m, mesEncontrado, sep) => {
+    let novoNome;
+    if(mesEncontrado === mesEncontrado.toUpperCase()) novoNome = nomeMes.toUpperCase();
+    else if(mesEncontrado[0] === mesEncontrado[0].toUpperCase()) novoNome = nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1);
+    else novoNome = nomeMes;
+    return novoNome + sep + ano;
+  });
+  return out;
 }
 
 const MODELOS_PADRAO_POR_EMPRESA = {
