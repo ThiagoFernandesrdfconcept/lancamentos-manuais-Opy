@@ -490,19 +490,30 @@ async function saveEmpresa(v){
   state.empresa = v;
   try{ await window.storage.set('ultima-empresa', v, false); }catch(e){}
 }
+// Evita que o listener de sincronização em tempo real (que reavalia TODOS os
+// documentos sempre que qualquer um deles muda) sobrescreva, no meio de uma
+// sequência de salvamentos locais (ex: salvar lançamentos e depois o modelo),
+// um campo de state cujo salvamento ainda está em andamento.
+const __pendingWrites = {};
+function __beginWrite(key){ __pendingWrites[key] = (__pendingWrites[key] || 0) + 1; }
+function __endWrite(key){ __pendingWrites[key] = Math.max(0, (__pendingWrites[key] || 0) - 1); }
 async function saveLancamentos(){
   try{
     updateSyncBaseline();
+    __beginWrite('lancamentos');
     await window.storage.set('lancamentos', JSON.stringify(state.lancamentos), true);
   }
   catch(e){ showToast('Erro ao salvar. Tente novamente.'); }
+  finally{ __endWrite('lancamentos'); }
 }
 async function saveCounters(){
   try{
     updateSyncBaseline();
+    __beginWrite('lote-counters');
     await window.storage.set('lote-counters', JSON.stringify(state.loteCounters), true);
   }
   catch(e){ showToast('Erro ao salvar contador do lote.'); }
+  finally{ __endWrite('lote-counters'); }
 }
 function formatMesAno(dataStr){
   if(!dataStr) return '';
@@ -915,30 +926,38 @@ const MODELOS_PADRAO_POR_EMPRESA = {
 async function saveModelos(){
   try{
     updateSyncBaseline();
+    __beginWrite('modelos');
     await window.storage.set('modelos', JSON.stringify(state.modelos), true);
   }
   catch(e){ showToast('Erro ao salvar modelo.'); }
+  finally{ __endWrite('modelos'); }
 }
 async function saveContasExtras(){
   try{
     updateSyncBaseline();
+    __beginWrite('contas-extras');
     await window.storage.set('contas-extras', JSON.stringify(state.contasExtras), true);
   }
   catch(e){ showToast('Erro ao salvar a conta.'); }
+  finally{ __endWrite('contas-extras'); }
 }
 async function saveLotesExtras(){
   try{
     updateSyncBaseline();
+    __beginWrite('lotes-extras');
     await window.storage.set('lotes-extras', JSON.stringify(state.lotesExtras), true);
   }
   catch(e){ showToast('Erro ao salvar o lote.'); }
+  finally{ __endWrite('lotes-extras'); }
 }
 async function saveLotesOcultos(){
   try{
     updateSyncBaseline();
+    __beginWrite('lotes-ocultos');
     await window.storage.set('lotes-ocultos', JSON.stringify(state.lotesOcultos), true);
   }
   catch(e){ showToast('Erro ao salvar o lote.'); }
+  finally{ __endWrite('lotes-ocultos'); }
 }
 
 // ---------- Firebase (banco de dados + login) ----------
@@ -1041,6 +1060,10 @@ function setupRealtimeSync(){
       const raw = doc.data() ? doc.data().value : undefined;
       let val;
       try{ val = raw ? JSON.parse(raw) : undefined; }catch(e){ val = undefined; }
+      // Se este documento tem um salvamento local ainda em andamento (ex: dentro de uma
+      // sequência de vários saves seguidos), ignora esta leitura para não sobrescrever o
+      // state local com uma versão antiga do Firestore antes do nosso próprio save concluir.
+      if(__pendingWrites[doc.id]) return;
       if(doc.id === 'lancamentos'){ state.lancamentos = val || []; changed = true; }
       else if(doc.id === 'lote-counters'){ state.loteCounters = val || {}; changed = true; }
       else if(doc.id === 'modelos'){ state.modelos = val || []; changed = true; }
@@ -1236,7 +1259,7 @@ function renderCompanyTabs(){
 }
 
 // ---------- Autocomplete ----------
-function setupAccountAutocomplete(inputId, listId, hiddenId, selectedBoxId, dataArr, isConta, groupSelectId){
+function setupAccountAutocomplete(inputId, listId, hiddenId, selectedBoxId, dataArr, isConta, groupSelectId, onSelect){
   const input = document.getElementById(inputId);
   const list = document.getElementById(listId);
   const hidden = document.getElementById(hiddenId);
@@ -1282,6 +1305,7 @@ function setupAccountAutocomplete(inputId, listId, hiddenId, selectedBoxId, data
     }
     selBox.classList.add('show');
     list.classList.remove('show');
+    if(onSelect) onSelect(m);
   }
   input.addEventListener('input', () => {
     hidden.value = '';
@@ -2704,7 +2728,7 @@ function afterRender(){
   if(state.tab === 'lancar'){
     const acDebito = setupAccountAutocomplete('ac_debito_input','ac_debito_list','ac_debito_hidden','ac_debito_sel', CONTAS, true);
     const acCredito = setupAccountAutocomplete('ac_credito_input','ac_credito_list','ac_credito_hidden','ac_credito_sel', CONTAS, true);
-    const acCr = setupAccountAutocomplete('ac_cr_input','ac_cr_list','ac_cr_hidden','ac_cr_sel', centrosDaEmpresa(), false, 'filtro_cr_grupo');
+    const acCr = setupAccountAutocomplete('ac_cr_input','ac_cr_list','ac_cr_hidden','ac_cr_sel', centrosDaEmpresa(), false, 'filtro_cr_grupo', () => autoHistoricoProvisao());
     const acNatureza = setupNaturezaAutocomplete();
     const acFase2 = document.getElementById('ac_fase2_input') ? setupAccountAutocomplete('ac_fase2_input','ac_fase2_list','ac_fase2_hidden','ac_fase2_sel', CONTAS, true) : null;
 
@@ -2865,8 +2889,16 @@ function afterRender(){
       if(tipoLanc !== 'provisao' && tipoLanc !== 'reversao') return;
       const rotulo = tipoLanc === 'provisao' ? 'PROVISAO' : 'REVERSAO';
       const nDocVal = document.getElementById('f_ndoc').value.trim();
-      const parceiroVal = document.getElementById('f_parceiroNome').value.trim();
-      histEl.value = `VALOR REF.  ${rotulo} "${nDocVal}" - "${parceiroVal}"`;
+      let complemento;
+      if(state.empresa === 'ONM HEALTH'){
+        // Para a ONM, o histórico traz o Centro de Resultado após o nº do documento,
+        // em vez do nome do parceiro.
+        const crVal = document.getElementById('ac_cr_hidden') ? document.getElementById('ac_cr_hidden').value : '';
+        complemento = crVal ? (CENTROS_BY_CODE[crVal] ? CENTROS_BY_CODE[crVal].desc : crVal) : '';
+      }else{
+        complemento = document.getElementById('f_parceiroNome').value.trim();
+      }
+      histEl.value = `VALOR REF.  ${rotulo} "${nDocVal}" - "${complemento}"`;
       histCount.textContent = histEl.value.length;
     }
     document.getElementById('f_ndoc').addEventListener('input', autoHistoricoProvisao);
@@ -3152,9 +3184,20 @@ function afterRender(){
           exportado: false, numlan: null
         });
       });
-      await saveLancamentos();
-      m.bloqueado = true;
-      await saveModelos();
+      // Protege 'lancamentos' e 'modelos' contra sobrescrita pelo listener de sincronização
+      // durante toda esta sequência de dois salvamentos (não apenas durante cada um
+      // individualmente) — caso contrário, uma notificação de sync disparada entre os dois
+      // awaits pode substituir state.modelos por uma cópia antiga e perder o bloqueio.
+      __beginWrite('lancamentos');
+      __beginWrite('modelos');
+      try{
+        await saveLancamentos();
+        m.bloqueado = true;
+        await saveModelos();
+      } finally {
+        __endWrite('lancamentos');
+        __endWrite('modelos');
+      }
       state.usingModeloId = null;
       showToast(m.linhas.length + ' lançamentos adicionados. Este modelo foi bloqueado para novo uso.');
       render();
