@@ -2895,9 +2895,9 @@ function afterRender(){
         // após o nº do documento, e o nome do parceiro é mantido no final.
         const crVal = document.getElementById('ac_cr_hidden') ? document.getElementById('ac_cr_hidden').value : '';
         const crTexto = crVal ? (crVal + (CENTROS_BY_CODE[crVal] ? ' - ' + CENTROS_BY_CODE[crVal].desc : '')) : '';
-        histEl.value = `VALOR REF.  ${rotulo} "${nDocVal}" - "${crTexto}"${parceiroVal ? ' - ' + parceiroVal : ''}`;
+        histEl.value = `VALOR REF.  ${rotulo} ${nDocVal} - ${crTexto}${parceiroVal ? ' - ' + parceiroVal : ''}`;
       }else{
-        histEl.value = `VALOR REF.  ${rotulo} "${nDocVal}" - "${parceiroVal}"`;
+        histEl.value = `VALOR REF.  ${rotulo} ${nDocVal} - ${parceiroVal}`;
       }
       histCount.textContent = histEl.value.length;
     }
