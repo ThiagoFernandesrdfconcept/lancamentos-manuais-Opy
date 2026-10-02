@@ -607,12 +607,16 @@ const MODELOS_PADRAO_POR_EMPRESA = {
     ]}
   ],
   'OPY SERVIÇOS 4': [
-    { nome: 'Depreciação e Provisão (Matriz)', lote: '', linhas: [
+    { nome: 'Depreciação (Matriz)', lote: '', linhas: [
       { debito: '1000', credito: '325', cr: '', natureza: '', tipoLanc: 'direto', historico: 'DEPRECIACAO INSTALACOES 24/60', valorRef: 58.32 },
       { debito: '1000', credito: '1405', cr: '', natureza: '', tipoLanc: 'direto', historico: 'DEPRECIACAO MAQUINAS E EQUIPAMENTOS 24/60', valorRef: 133.17 },
       { debito: '1000', credito: '327', cr: '', natureza: '', tipoLanc: 'direto', historico: 'DEPRECIACAO COMPUTADORES 24/60', valorRef: 602.03 },
-      { debito: '1000', credito: '1405', cr: '', natureza: '', tipoLanc: 'direto', historico: 'DEPRECIACAO MAQUINAS E EQUIPAMENTOS 24/60', valorRef: 1166.76 },
-      { debito: '1564', credito: '473', cr: '510220200', natureza: '', tipoLanc: 'direto', historico: 'Provisão PPR {MM/AAAA}- MATRIZ', valorRef: 73853.09 },
+      { debito: '1000', credito: '1405', cr: '', natureza: '', tipoLanc: 'direto', historico: 'DEPRECIACAO MAQUINAS E EQUIPAMENTOS 24/60', valorRef: 1166.76 }
+    ]},
+    { nome: 'Provisão PPR (Matriz)', lote: '', linhas: [
+      { debito: '1564', credito: '473', cr: '510220200', natureza: '', tipoLanc: 'direto', historico: 'Provisão PPR {MM/AAAA}- MATRIZ', valorRef: 73853.09 }
+    ]},
+    { nome: 'AVP Confirming (Matriz)', lote: '', linhas: [
       { debito: '1652', credito: '674', cr: '510220200', natureza: '', tipoLanc: 'direto', historico: 'AVP - AJUSTE A VALOR PRESENTE CONFIRMING {MM/AAAA}', valorRef: 20610.62 }
     ]},
     { nome: 'Rateio ND (OZN/ONM/INFRASERV/OME)', lote: '', linhas: [
@@ -1644,6 +1648,55 @@ function getUltimoValorLinha(empresa, modeloId, linhaIdx, debito, credito, cr){
   return candidatos[0].valor;
 }
 
+function getUltimoHistoricoLinha(empresa, modeloId, linhaIdx, debito, credito, cr){
+  let candidatos = state.lancamentos.filter(e =>
+    e.empresa === empresa && e.modeloId === modeloId && e.modeloLinha === linhaIdx
+  );
+  if(candidatos.length === 0){
+    candidatos = state.lancamentos.filter(e =>
+      e.empresa === empresa && e.debito === debito && e.credito === credito && (e.cr || '') === (cr || '')
+    );
+  }
+  if(candidatos.length === 0) return null;
+  candidatos.sort((a,b) => {
+    if(a.data !== b.data) return a.data < b.data ? 1 : -1;
+    return (b.criadoEm||0) - (a.criadoEm||0);
+  });
+  return { historico: candidatos[0].historico || '', data: candidatos[0].data || '' };
+}
+
+function diffMesesDatas(dataAntiga, dataNova){
+  const pa = (dataAntiga||'').split('-');
+  const pn = (dataNova||'').split('-');
+  if(pa.length < 2 || pn.length < 2) return 0;
+  const anoA = parseInt(pa[0], 10), mesA = parseInt(pa[1], 10);
+  const anoN = parseInt(pn[0], 10), mesN = parseInt(pn[1], 10);
+  if([anoA,mesA,anoN,mesN].some(isNaN)) return 0;
+  return (anoN - anoA) * 12 + (mesN - mesA);
+}
+
+// Avança contadores de parcela no formato "N/Total" (ex: "24/60" -> "25/60") com base
+// no último lançamento real desse modelo/linha, de acordo com a diferença de meses
+// entre a data do último uso e a nova data escolhida.
+function aplicarContadorParcela(texto, empresa, modeloId, linhaIdx, debito, credito, cr, novaData){
+  if(!texto) return texto;
+  const ultimo = getUltimoHistoricoLinha(empresa, modeloId, linhaIdx, debito, credito, cr);
+  if(!ultimo || !ultimo.historico || !ultimo.data) return texto;
+  const reParcela = /\b(\d{1,3})\/(\d{1,3})\b/;
+  const matchUltimo = reParcela.exec(ultimo.historico);
+  if(!matchUltimo) return texto;
+  const matchAtual = reParcela.exec(texto);
+  if(!matchAtual) return texto;
+  const totalParcelas = matchUltimo[2];
+  if(matchAtual[2] !== totalParcelas) return texto; // não é o mesmo contador (total diferente)
+  const meses = diffMesesDatas(ultimo.data, novaData);
+  const parcelaAnterior = parseInt(matchUltimo[1], 10);
+  let novaParcela = parcelaAnterior + meses;
+  if(isNaN(novaParcela)) return texto;
+  if(novaParcela < 1) novaParcela = 1;
+  return texto.slice(0, matchAtual.index) + novaParcela + '/' + totalParcelas + texto.slice(matchAtual.index + matchAtual[0].length);
+}
+
 function renderModeloUsoPanel(){
   const m = state.modelos.find(mm => mm.id === state.usingModeloId);
   if(!m) return '<p class="small-note">Modelo não encontrado.</p>';
@@ -1692,7 +1745,7 @@ function renderModeloUsoPanel(){
       <div style="font-size:11px;color:var(--muted);margin:2px 0 6px 0;">CR: ${escapeHtml(cr)}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <input class="uso_valor" data-idx="${i}" type="text" inputmode="decimal" placeholder="Valor R$ 0,00" value="${escapeHtml(valorInicial)}" style="width:180px;padding:8px 9px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:13px;">
-        <input class="uso_hist" data-idx="${i}" data-template="${escapeHtml(l.historico)}" data-touched="0" type="text" value="${escapeHtml(histPreview)}" style="flex:1;min-width:220px;padding:8px 9px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:13px;">
+        <input class="uso_hist" data-idx="${i}" data-template="${escapeHtml(l.historico)}" data-touched="0" data-debito="${escapeHtml(l.debito)}" data-credito="${escapeHtml(l.credito)}" data-cr="${escapeHtml(l.cr||'')}" type="text" value="${escapeHtml(histPreview)}" style="flex:1;min-width:220px;padding:8px 9px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:13px;">
       </div>
       ${ultimoValor != null ? `<div class="small-note" style="margin-top:3px;">Valor sugerido com base no último lançamento (mesma conta/CR). Ajuste se necessário.</div>` : (valorParaExibir != null ? `<div class="small-note" style="margin-top:3px;">Valor de referência (última implantação). Ajuste se necessário.</div>` : '')}
     </div>`;
@@ -1713,15 +1766,19 @@ function renderModelosList(){
   const botaoPadrao = faltamPadrao ? `<div style="margin-bottom:12px;"><button class="btn secondary" id="btnCarregarModelosPadrao">+ Carregar modelos fixos de ${escapeHtml(state.empresa)}</button></div>` : '';
   if(modelos.length === 0) return botaoPadrao + '<p class="small-note">Nenhum modelo salvo ainda para esta empresa. Preencha Débito/Crédito/CR/Histórico e clique em "+ Adicionar linha ao modelo" — repita para várias linhas (ex: Provisão PPR com 4 CRs) e depois salve. Só o valor, data e documento ficam em aberto.</p>';
   return botaoPadrao + modelos.map(m => {
+    const bloqueado = !!m.bloqueado;
     return `<div style="padding:9px 0;border-bottom:1px solid var(--line-soft);">
       <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;">
         <div style="font-size:13px;font-weight:600;color:var(--ink);">${escapeHtml(m.nome)} <span style="font-weight:400;color:var(--muted);font-size:11.5px;">(${m.linhas.length} linha${m.linhas.length===1?'':'s'})</span></div>
         <div class="row-actions">
-          <button class="icon-btn" data-usarmodelo="${m.id}">Usar</button>
+          ${bloqueado
+            ? (podeDesbloquear() ? `<button class="icon-btn" data-desbloquearmodelo="${m.id}">Desbloquear</button>` : '')
+            : `<button class="icon-btn" data-usarmodelo="${m.id}">Usar</button>`}
           <button class="icon-btn" data-delmodelo="${m.id}">Excluir</button>
         </div>
       </div>
       <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">${m.linhas.slice(0,3).map(l=>escapeHtml(l.historico)).join(' · ')}${m.linhas.length>3?' ...':''}</div>
+      ${bloqueado ? `<div class="small-note" style="margin-top:3px;color:var(--danger);">🔒 Já foi feito um lançamento utilizando este modelo.${podeDesbloquear() ? '' : ' Apenas o administrador pode desbloqueá-lo.'}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -2987,15 +3044,33 @@ function afterRender(){
         render();
       });
     });
+    document.querySelectorAll('[data-desbloquearmodelo]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if(!podeDesbloquear()){ showToast('Apenas o administrador pode desbloquear este modelo.'); return; }
+        const m = state.modelos.find(mm => mm.id === btn.dataset.desbloquearmodelo);
+        if(!m) return;
+        if(!confirm('Desbloquear o modelo "' + m.nome + '" para novo uso?')) return;
+        m.bloqueado = false;
+        await saveModelos();
+        showToast('Modelo desbloqueado.');
+        render();
+      });
+    });
 
     const btnCancelarUso = document.getElementById('btnCancelarUsoModelo');
     if(btnCancelarUso) btnCancelarUso.addEventListener('click', () => { state.usingModeloId = null; render(); });
 
     const usoDataInput = document.getElementById('uso_data');
     if(usoDataInput) usoDataInput.addEventListener('change', () => {
+      const mUso = state.modelos.find(mm => mm.id === state.usingModeloId);
       document.querySelectorAll('.uso_hist').forEach(inp => {
         if(inp.dataset.touched === '1') return;
-        inp.value = aplicarTemplateHistorico(inp.dataset.template, usoDataInput.value);
+        let novoTexto = aplicarTemplateHistorico(inp.dataset.template, usoDataInput.value);
+        if(mUso){
+          const idx = parseInt(inp.dataset.idx, 10);
+          novoTexto = aplicarContadorParcela(novoTexto, state.empresa, mUso.id, idx, inp.dataset.debito, inp.dataset.credito, inp.dataset.cr, usoDataInput.value);
+        }
+        inp.value = novoTexto;
       });
     });
     document.querySelectorAll('.uso_hist').forEach(inp => {
@@ -3078,8 +3153,10 @@ function afterRender(){
         });
       });
       await saveLancamentos();
+      m.bloqueado = true;
+      await saveModelos();
       state.usingModeloId = null;
-      showToast(m.linhas.length + ' lançamentos adicionados.');
+      showToast(m.linhas.length + ' lançamentos adicionados. Este modelo foi bloqueado para novo uso.');
       render();
     });
 
