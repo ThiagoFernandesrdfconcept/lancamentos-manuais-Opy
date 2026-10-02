@@ -2889,16 +2889,16 @@ function afterRender(){
       if(tipoLanc !== 'provisao' && tipoLanc !== 'reversao') return;
       const rotulo = tipoLanc === 'provisao' ? 'PROVISAO' : 'REVERSAO';
       const nDocVal = document.getElementById('f_ndoc').value.trim();
-      let complemento;
+      const parceiroVal = document.getElementById('f_parceiroNome').value.trim();
       if(state.empresa === 'ONM HEALTH'){
-        // Para a ONM, o histórico traz o Centro de Resultado após o nº do documento,
-        // em vez do nome do parceiro.
+        // Para a ONM, o histórico traz o Centro de Resultado (código + descrição) logo
+        // após o nº do documento, e o nome do parceiro é mantido no final.
         const crVal = document.getElementById('ac_cr_hidden') ? document.getElementById('ac_cr_hidden').value : '';
-        complemento = crVal ? (CENTROS_BY_CODE[crVal] ? CENTROS_BY_CODE[crVal].desc : crVal) : '';
+        const crTexto = crVal ? (crVal + (CENTROS_BY_CODE[crVal] ? ' - ' + CENTROS_BY_CODE[crVal].desc : '')) : '';
+        histEl.value = `VALOR REF.  ${rotulo} "${nDocVal}" - "${crTexto}"${parceiroVal ? ' - ' + parceiroVal : ''}`;
       }else{
-        complemento = document.getElementById('f_parceiroNome').value.trim();
+        histEl.value = `VALOR REF.  ${rotulo} "${nDocVal}" - "${parceiroVal}"`;
       }
-      histEl.value = `VALOR REF.  ${rotulo} "${nDocVal}" - "${complemento}"`;
       histCount.textContent = histEl.value.length;
     }
     document.getElementById('f_ndoc').addEventListener('input', autoHistoricoProvisao);
