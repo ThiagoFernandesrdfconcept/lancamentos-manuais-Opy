@@ -379,12 +379,17 @@ Object.keys(CR_SUBGROUPS_BY_EMPRESA_RAW).forEach(emp => {
 });
 function centrosDaEmpresa(){ return CENTROS_BY_EMPRESA[state.empresa] || CENTROS; }
 function crGruposDaEmpresa(){ return CR_SUBGROUPS_BY_EMPRESA[state.empresa] || CR_GROUPS; }
-const ONM_FASE2_AUTO_MAP = { '4.2': 1092, '4.1': 1990 };
+const ONM_FASE2_AUTO_MAP = { '42': 1092, '41': 1990 };
 function onmFase2AutoRed(natRed){
   const acc = CONTAS_BY_RED[natRed];
   if(!acc) return null;
+  // Normaliza a conta completa removendo tudo que não for dígito, para que o
+  // prefixo 4.1/4.2 seja reconhecido tanto no formato com pontos (4.1.01...)
+  // quanto em códigos digitados sem pontuação (4101...), como ocorre em
+  // contas cadastradas manualmente pelo usuário.
+  const fullDigits = String(acc.full || '').replace(/\D/g, '');
   for(const prefix in ONM_FASE2_AUTO_MAP){
-    if(acc.full.startsWith(prefix)) return ONM_FASE2_AUTO_MAP[prefix];
+    if(fullDigits.startsWith(prefix)) return ONM_FASE2_AUTO_MAP[prefix];
   }
   return null;
 }
